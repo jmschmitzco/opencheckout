@@ -220,6 +220,7 @@ trade.
 
 | | |
 |---|---|
+| Gateways | Asaas, Pagar.me, Mercado Pago, PayPal, and a simulated one |
 | Payments | Card with instalments, Pix, boleto, PayPal |
 | Subscriptions | Trials, renewals, dunning with retries, cancel at period end |
 | Entitlements | One call that answers "may this user in?" |
@@ -258,6 +259,10 @@ Then add a merchant's processor credentials, which are encrypted with
 `APP_SECRET` before they are written. Each gateway gets a callback URL with an
 unguessable token in it; configure that URL in the processor's dashboard.
 
+Asaas and PayPal have a sandbox, which is worth using before you have a
+production account. What each gateway can take, and what it cannot, is in
+[src/gateways/contract.md](src/gateways/contract.md).
+
 Full instructions, including Docker and the reverse proxy, are in
 [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
 
@@ -293,8 +298,12 @@ Every one of these is here because the alternative loses money or leaks data.
 npm test
 ```
 
-150 tests against the real schema, in an in-memory PostgreSQL, with a simulated
+293 tests against the real schema, in an in-memory PostgreSQL, with a simulated
 gateway. No network, no credentials, and the exit code is meaningful.
+
+That includes the regression tests from three adversarial audits of this
+codebase, written up in [docs/AUDITS.md](docs/AUDITS.md): what was wrong, why
+it mattered, and the test that stops it coming back.
 
 ---
 

@@ -289,8 +289,16 @@ async function deliver(delivery, { fetchImpl = globalThis.fetch } = {}) {
   return { ok: false, status, error };
 }
 
+// How many deliveries are in flight at once.
+//
+// ONE AT A TIME WAS A HEAD OF LINE BLOCK. Each attempt waits up to ten
+// seconds, so fifty queued rows behind one endpoint that stopped answering
+// meant eight minutes in which nobody else's webhook moved, every tick,
+// forever. One broken integration held up every other merchant's.
+const DELIVERY_CONCURRENCY = 8;
+
 // Sends what is due. Called by the background loop, and directly by tests.
-async function dispatchPending({ limit = 50, fetchImpl = globalThis.fetch } = {}) {
+async function dispatchPending({ limit = 50, fetchImpl = globalThis.fetch, concurrency = DELIVERY_CONCURRENCY } = {}) {
   const due = await db.query(
     `select * from webhook_deliveries
       where status = 'pending' and next_attempt_at <= now()
@@ -300,14 +308,41 @@ async function dispatchPending({ limit = 50, fetchImpl = globalThis.fetch } = {}
     { withoutMerchant: "the delivery worker runs for every merchant, one row at a time" }
   );
 
-  const results = [];
-  for (const delivery of due.rows) {
-    // Each row carries its merchant, so the context is opened per row rather
-    // than per batch.
-    const ctx = require("../db/merchant-context");
-    const result = await ctx.withMerchant(delivery.merchant_id, () => deliver(delivery, { fetchImpl }));
-    results.push(result);
+  const ctx = require("../db/merchant-context");
+  const rows = due.rows;
+  const results = new Array(rows.length);
+
+  // An endpoint that just timed out will time out again on the next row in
+  // this batch. Skipping its remaining rows costs ten seconds each that buy
+  // nothing, and they stay pending for the next tick either way.
+  const failedThisPass = new Set();
+
+  let cursor = 0;
+  async function worker() {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= rows.length) return;
+
+      const delivery = rows[index];
+      if (failedThisPass.has(delivery.endpoint_id)) {
+        results[index] = { ok: false, skipped: true };
+        continue;
+      }
+
+      // Each row carries its merchant, so the context is opened per row
+      // rather than per batch.
+      const result = await ctx.withMerchant(delivery.merchant_id, () =>
+        deliver(delivery, { fetchImpl })
+      );
+      results[index] = result;
+      if (!result.ok) failedThisPass.add(delivery.endpoint_id);
+    }
   }
+
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(concurrency, rows.length || 1)) }, worker)
+  );
   return results;
 }
 
@@ -340,6 +375,7 @@ async function retry(merchantId, deliveryId) {
 }
 
 module.exports = {
+  DELIVERY_CONCURRENCY,
   BACKOFF_SECONDS,
   MAX_ATTEMPTS,
   FAILURES_BEFORE_DISABLE,

@@ -62,6 +62,33 @@ router.use(async (req, res, next) => {
   }
 });
 
+// A PUBLISHABLE KEY IS MEANT FOR A BROWSER, and a browser cannot use it
+// without this. The claim was in the documentation and the header was not, so
+// the only honest options were to add it or to stop making the claim.
+//
+// It is granted ONLY to publishable keys and ONLY for reads. A secret key gets
+// no cross-origin access at all, so a key that leaks into a page cannot be
+// used from one.
+router.use((req, res, next) => {
+  if (req.apiKey.kind !== "publishable") return next();
+
+  const origin = req.get("origin");
+  if (origin) {
+    res.set("access-control-allow-origin", origin);
+    res.set("vary", "Origin");
+    res.set("access-control-allow-headers", "authorization, content-type");
+    res.set("access-control-allow-methods", "GET, OPTIONS");
+    // No credentials: the key is the credential, and allowing cookies here
+    // would make this a cross-site request forgery surface.
+    res.set("access-control-max-age", "600");
+  }
+  if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method !== "GET") {
+    return next(forbidden("A publishable key may only read."));
+  }
+  return next();
+});
+
 router.use(perKeyLimit);
 
 // A publishable key is meant to sit in a browser, so it may only do the two
@@ -84,6 +111,19 @@ function listEnvelope(rows, mapper, { limit }) {
     has_more: hasMore,
     next_cursor: hasMore && page.length ? mapper(page[page.length - 1]).id : null,
   };
+}
+
+// A cursor that does not look like one of our ids is a caller mistake, and
+// answering with an empty page hides it. The subquery would compare against
+// null and return nothing, which reads exactly like "you have no more data".
+function cursorOf(req, kind) {
+  const value = req.query.cursor;
+  if (value === undefined || value === null || value === "") return null;
+  const ids = require("../lib/ids");
+  if (!ids.looksLike(kind, value)) {
+    throw badRequest(`cursor is not a valid ${kind} id.`, { cursor: "Invalid." });
+  }
+  return String(value);
 }
 
 function limitOf(req, fallback = 25) {
@@ -176,7 +216,7 @@ router.get("/orders", secretKeyOnly, async (req, res, next) => {
     const limit = limitOf(req);
     const rows = await orders.list(req.merchantId, {
       status: req.query.status || null,
-      before: req.query.cursor || null,
+      before: cursorOf(req, "order"),
       limit: limit + 1,
     });
     res.json(listEnvelope(rows, (row) => orders.toApi(row), { limit }));
@@ -524,7 +564,7 @@ router.get("/events", secretKeyOnly, async (req, res, next) => {
     const limit = limitOf(req);
     const rows = await events.list(req.merchantId, {
       type: req.query.type || null,
-      before: req.query.cursor || null,
+      before: cursorOf(req, "event"),
       limit,
     });
     res.json({ object: "list", data: rows, has_more: rows.length === limit });

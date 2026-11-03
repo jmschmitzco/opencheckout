@@ -206,3 +206,105 @@ Origin has to state ours.
   `type="application/json"`, which the browser does not execute.
 - A session's secret is compared in constant time and is useless on any other
   session.
+
+---
+
+## Audit 3: contract and resilience
+
+Scope: what happens when something is broken. A gateway that is not
+configured, a database that is gone, an endpoint that stopped answering, a
+charge that never completed, a caller who passes nonsense, and documentation
+that promises what the code does not do.
+
+### 3.1 One dead endpoint stalled every delivery — high
+
+Deliveries were sent one at a time, each waiting up to ten seconds. Fifty rows
+queued behind an endpoint that stopped answering meant eight minutes, every
+tick, in which no other merchant's webhook moved. One broken integration held
+up everybody's.
+
+**Fix.** Eight in flight at once, and an endpoint that fails once in a pass has
+its remaining rows skipped: trying them costs ten seconds each and buys
+nothing, and they stay pending for the next tick either way.
+
+**Test.** `audit-resilience.test.js`, "a dead endpoint is skipped after its
+first failure in a pass", which also asserts nothing is lost.
+
+### 3.2 The health check lied when the database was down — high
+
+`/healthz` answered 200 without asking anything. A load balancer kept sending
+buyers to an instance that could not take a single payment, which is worse
+than having no health check at all.
+
+**Fix.** It queries the database and answers 503 when that fails.
+
+**Test.** "it is 503 when the database is gone".
+
+### 3.3 Orders could stay pending forever — medium
+
+If a charge timed out before the gateway answered, the order had no charge id,
+and reconciliation only looks at orders that have one. Nothing ever closed it.
+
+**Fix.** A sweep writes off orders with no charge id after a day, as
+**expired** rather than cancelled. The difference is the whole point:
+`expired -> paid` is a legal transition and `canceled -> paid` is not. If this
+was the orphan case, where the charge does exist on the gateway's side and the
+response was lost, a notification arriving later can still rescue the sale.
+
+**Test.** "is written off after a day, as EXPIRED so a late payment still
+lands", which then rescues it.
+
+### 3.4 A misconfigured gateway answered 500 — medium
+
+`getGateway` threw a bare Error, which the handler turned into "something went
+wrong on our side". That is untrue and useless: the merchant is the only person
+who can fix it, and they were told nothing.
+
+**Fix.** It is an `ApiError` naming the gateway and what to do.
+
+**Test.** "the error names the gateway and what to do, instead of a 500".
+
+### 3.5 Publishable keys could not be used from a browser — medium
+
+`api-keys.js` described them as "safe in a browser". With no CORS headers, a
+browser could not use one at all, so the documentation described something
+that did not exist.
+
+**Fix.** Cross-origin reads are granted to publishable keys only, never to
+secret keys, never with credentials, and never for a write. A secret key that
+leaks into a page still cannot be used from one.
+
+**Test.** "a preflight is answered for a publishable key", and its companion
+asserting a secret key gets nothing.
+
+### 3.6 An invalid cursor returned an empty page — low
+
+The pagination subquery compared against null and returned no rows, which
+reads exactly like "you have no more data" and hides the caller's mistake.
+
+**Fix.** A cursor that is not one of our ids is a 400.
+
+### 3.7 Documentation drift — low
+
+The README claimed a test count from several commits earlier, and the
+Portuguese guide still listed the gateway adapters as the largest missing
+piece after they had been written.
+
+**Fix.** Both refreshed, and four tests now hold the documentation to the code:
+every event type the README names must exist, the signature headers it
+documents must be the ones that are sent, every environment variable the code
+reads must be in `.env.example`, and every script it tells people to run must
+be in `package.json`.
+
+**Test.** "the documentation matches the code".
+
+### What this audit confirmed was already right
+
+- Every route handler either returns or calls `next(err)`; there is no path
+  where a rejected promise disappears.
+- The background loops never overlap themselves, so a slow pass cannot run
+  twice and charge a renewal twice.
+- A failure in anything accessory, such as emitting an event or clearing a
+  cart, cannot undo a payment that already happened.
+- Work started after a response is registered rather than dropped, so a
+  shutdown finishes it and a test can wait for it.

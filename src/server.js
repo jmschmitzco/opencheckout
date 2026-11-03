@@ -35,6 +35,7 @@ const LOOPS = [
     run: async () => {
       const carts = require("./services/carts");
       await carts.expireStaleSessions({ limit: 100 });
+      await carts.expireStrandedOrders({ limit: 100 });
       await carts.runReminders({ limit: 25 });
     },
   },

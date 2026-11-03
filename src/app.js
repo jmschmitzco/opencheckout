@@ -110,14 +110,29 @@ app.use(
 );
 
 // Liveness, and the one call a new operator makes to see if it is up.
-app.get("/healthz", (_req, res) => {
-  res.json({
+//
+// IT ASKS THE DATABASE. Answering 200 while the database is unreachable is
+// worse than not having a health check at all: a load balancer keeps sending
+// buyers to an instance that cannot take a single payment.
+app.get("/healthz", async (_req, res) => {
+  const body = {
     ok: true,
     service: "opencheckout",
     env: config.env,
     demo: isDemo(),
     version: require("../package.json").version,
-  });
+    database: "ok",
+  };
+  try {
+    await require("./db").query("select 1 as ok", [], {
+      withoutMerchant: "a health check belongs to no merchant",
+    });
+  } catch (err) {
+    body.ok = false;
+    body.database = "unreachable";
+    return res.status(503).json(body);
+  }
+  return res.json(body);
 });
 
 app.use("/v1", require("./routes/api-v1"));

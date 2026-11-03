@@ -80,8 +80,12 @@ async function getGateway({ merchantId, gateway = null, method = null, livemode 
 
   const credentials = await gatewayConfig.credentialsFor({ merchantId, gateway: chosen, livemode });
   if (!credentials) {
-    throw new Error(
-      `Gateway ${chosen} is not configured for this merchant. Add its API keys in the dashboard.`
+    // An ApiError, not a bare Error. A bare one became "something went wrong
+    // on our side", which is both untrue and useless: the merchant is the
+    // only person who can fix it and they were told nothing.
+    const { conflict } = require("../lib/errors");
+    throw conflict(
+      `${chosen} is not configured for this merchant. Add its API keys before taking payments.`
     );
   }
 

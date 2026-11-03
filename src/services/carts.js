@@ -243,7 +243,38 @@ async function expireStaleSessions({ limit = 100 } = {}) {
   return stale.rows.length;
 }
 
+// An order that never got a charge id never reached the gateway, or reached
+// it and lost the answer. After a day it is written off as expired.
+//
+// EXPIRED, NOT CANCELLED, and the difference matters: `expired -> paid` is a
+// legal transition and `canceled -> paid` is not. If this was the orphan case,
+// where the charge exists on the gateway's side and the response was lost, a
+// notification arriving later can still rescue the sale. Cancelling would
+// close that door for a buyer whose money already moved.
+const STRAND_AFTER_HOURS = 24;
+
+async function expireStrandedOrders({ limit = 100 } = {}) {
+  const stale = await db.query(
+    `select id, merchant_id, public_id from orders
+      where status = 'pending' and gateway_charge_id is null and created_at <= $1
+      order by created_at
+      limit $2`,
+    [new Date(Date.now() - STRAND_AFTER_HOURS * 3600 * 1000), limit],
+    { withoutMerchant: "the sweep runs for every merchant, one row at a time" }
+  );
+
+  const orders = require("./orders");
+  for (const row of stale.rows) {
+    await ctx.withMerchant(row.merchant_id, async () => {
+      await orders.markStatus(row.merchant_id, row.id, "expired", "sweep:never-charged");
+    });
+  }
+  return stale.rows.length;
+}
+
 module.exports = {
+  STRAND_AFTER_HOURS,
+  expireStrandedOrders,
   ABANDON_AFTER_MINUTES,
   REMINDER_HOURS,
   remember,
