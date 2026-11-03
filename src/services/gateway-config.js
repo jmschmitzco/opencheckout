@@ -180,7 +180,7 @@ async function listConfigured({ merchantId, livemode = null }) {
 // creation calls it before promising anything. Offering a method that cannot
 // be charged is the worst bug on a checkout: the buyer picks it, fills
 // everything in, and only then finds out.
-async function availableMethods({ merchantId, livemode = false }) {
+async function availableMethods({ merchantId, livemode = false, currency = null }) {
   const { isDemo } = require("../config");
   if (isDemo()) return ["pix", "card", "boleto"];
 
@@ -190,7 +190,13 @@ async function availableMethods({ merchantId, livemode = false }) {
   const methods = new Set();
   for (const row of configured) {
     if (!row.active) continue;
-    for (const method of capabilitiesOf(row.gateway).methods) methods.add(method);
+    const capability = capabilitiesOf(row.gateway);
+    // A gateway that cannot settle this currency must not contribute a
+    // method. Otherwise a session priced in dollars is offered a card that
+    // would be charged as if the number were reais: the same figure at a
+    // completely different price.
+    if (currency && capability.currencies && !capability.currencies.includes(currency)) continue;
+    for (const method of capability.methods) methods.add(method);
   }
   // Returned in a stable order, so the page draws the buttons the same way
   // every time rather than in whatever order the rows came back.
@@ -198,7 +204,7 @@ async function availableMethods({ merchantId, livemode = false }) {
 }
 
 // Which gateway takes a given method, for this merchant.
-async function gatewayForMethod({ merchantId, method, livemode = false }) {
+async function gatewayForMethod({ merchantId, method, livemode = false, currency = null }) {
   const { gatewaysForMethod } = require("../gateways");
 
   const configured = await listConfigured({ merchantId, livemode });
@@ -209,11 +215,13 @@ async function gatewayForMethod({ merchantId, method, livemode = false }) {
     );
   }
 
-  const candidates = gatewaysForMethod(method);
+  const candidates = gatewaysForMethod(method, currency);
   const chosen = candidates.find((name) => active.includes(name));
   if (!chosen) {
     throw badRequest(
-      `None of the configured gateways can take ${method}. Configured: ${active.join(", ")}.`
+      currency
+        ? `None of the configured gateways can take ${method} in ${currency}. Configured: ${active.join(", ")}.`
+        : `None of the configured gateways can take ${method}. Configured: ${active.join(", ")}.`
     );
   }
   return chosen;

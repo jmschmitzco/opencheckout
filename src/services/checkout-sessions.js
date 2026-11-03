@@ -250,6 +250,7 @@ async function create(merchantId, input = {}, { livemode = false } = {}) {
   const configured = await require("./gateway-config").availableMethods({
     merchantId,
     livemode,
+    currency,
   });
   const methods = normalizeMethods(input.payment_methods, { currency, mode, configured });
   const buyerFields = normalizeBuyerFields(input.buyer_fields);
@@ -310,7 +311,10 @@ async function create(merchantId, input = {}, { livemode = false } = {}) {
     ]
   );
 
-  if (couponCode) await coupons.registerRedemption(merchantId, couponCode);
+  // The redemption is NOT counted here. It is counted when an order exists,
+  // in services/orders.js. Counting a code the moment it is attached let one
+  // buyer trying three codes burn three redemptions of a limited coupon, and
+  // an abandoned cart burn one forever.
 
   return result.rows[0];
 }
@@ -430,6 +434,51 @@ async function expire(merchantId, sessionId) {
   );
 }
 
+// How long a claim is honoured before it is considered abandoned. Long enough
+// to cover a slow gateway plus a retry, short enough that a buyer whose
+// process died does not sit locked out.
+const CHARGE_CLAIM_SECONDS = 120;
+
+// Claims the session for one charge, and returns the FRESH row.
+//
+// It does two jobs at once, and both matter:
+//
+//   1. EXACTLY ONE CHARGE AT A TIME. Two tabs, or a double tap on a phone,
+//      otherwise both pass the "still open?" check and both reach the
+//      gateway. The conditional update means only one request can win.
+//   2. THE AMOUNTS ARE RE-READ. The row the request loaded may be stale: a
+//      coupon applied in the other tab a second ago would otherwise be
+//      ignored and the buyer charged the pre-discount price.
+//
+// Returns null when the session is not open, or when another charge is
+// already in flight.
+async function claimForCharge(merchantId, sessionId) {
+  const staleBefore = new Date(Date.now() - CHARGE_CLAIM_SECONDS * 1000);
+  const result = await db.query(
+    `update checkout_sessions
+        set charging_at = now()
+      where merchant_id = $1 and id = $2 and status = 'open'
+        and (charging_at is null or charging_at < $3)
+      returning *`,
+    [merchantId, sessionId, staleBefore]
+  );
+  const claimed = result.rows[0] || null;
+  // A session whose time ran out between the page loading and the buyer
+  // pressing pay is expired, whatever the stored status says.
+  if (claimed && isExpired(claimed)) return null;
+  return claimed;
+}
+
+// Releases the claim so the buyer can correct their card and try again. A
+// declined card is a normal event, not a reason to end the checkout.
+async function releaseClaim(merchantId, sessionId) {
+  await db.query(
+    `update checkout_sessions set charging_at = null
+      where merchant_id = $1 and id = $2 and status = 'open'`,
+    [merchantId, sessionId]
+  );
+}
+
 async function markCompleted(merchantId, sessionId, orderId) {
   await db.query(
     `update checkout_sessions
@@ -496,7 +545,6 @@ async function applyCoupon(merchantId, session, code, email) {
       Math.max(0, session.subtotal_cents - applied.discountCents),
     ]
   );
-  await coupons.registerRedemption(merchantId, applied.coupon.code);
   return { ok: true, session: result.rows[0], reason: null };
 }
 
@@ -552,6 +600,9 @@ module.exports = {
   MODES,
   STATUSES,
   MAX_LINE_ITEMS,
+  CHARGE_CLAIM_SECONDS,
+  claimForCharge,
+  releaseClaim,
   create,
   resolveLineItems,
   normalizeMethods,

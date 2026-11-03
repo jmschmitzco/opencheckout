@@ -58,6 +58,12 @@ class DemoGateway {
     return ["pix", "card", "boleto"];
   }
 
+  // The simulated gateway takes anything, so a developer can exercise a
+  // currency before they have an account that settles in it.
+  get supportedCurrencies() {
+    return null; // null means "no restriction"
+  }
+
   get supportsRecurring() {
     return true;
   }

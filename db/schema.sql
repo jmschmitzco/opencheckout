@@ -247,6 +247,17 @@ create table if not exists checkout_sessions (
   metadata           text not null default '{}',
   client_secret      text not null,
   order_id           integer,
+  -- WHEN A CHARGE WAS CLAIMED ON THIS SESSION.
+  --
+  -- Two browser tabs is normal human behaviour, and without this both of them
+  -- pass the "is it still open?" check and both charge the card. The claim is
+  -- taken by a conditional UPDATE, so exactly one request wins, and it is
+  -- released the moment a charge is refused so the buyer can fix their card
+  -- and try again.
+  --
+  -- It goes stale on its own, because a process that dies mid-charge must not
+  -- lock a session forever.
+  charging_at        timestamptz,
   expires_at         timestamptz not null,
   created_at         timestamptz not null default now(),
   completed_at       timestamptz

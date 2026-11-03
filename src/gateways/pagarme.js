@@ -133,6 +133,10 @@ class PagarmeGateway {
     return ["pix", "card", "boleto"];
   }
 
+  get supportedCurrencies() {
+    return ["BRL"];
+  }
+
   get supportsRecurring() {
     return true;
   }

@@ -246,6 +246,15 @@ async function renew(merchantId, subscription) {
     });
   } catch (err) {
     console.error(`[subscriptions] Renewal of ${subscription.public_id} failed:`, err.message);
+    // The order row was created before the call and nothing will ever settle
+    // it, so it is closed here. Leaving it pending would show the merchant a
+    // renewal that looks like it is still coming, forever, and would keep the
+    // reconciliation loop asking about a charge that was never made.
+    await db.query(
+      `update orders set status = 'canceled', refusal_reason = $3, updated_at = now()
+        where merchant_id = $1 and id = $2 and status = 'pending'`,
+      [merchantId, order.id, "The gateway could not be reached."]
+    );
     return markPaymentFailed(merchantId, subscription, "The gateway could not be reached.");
   }
 

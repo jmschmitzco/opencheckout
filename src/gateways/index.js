@@ -38,6 +38,8 @@ function capabilitiesOf(name) {
   const capabilities = {
     name,
     methods: probe.supportedMethods || [],
+    // null means no restriction, which is what the simulated gateway says.
+    currencies: probe.supportedCurrencies || null,
     supportsRecurring: Boolean(probe.supportsRecurring),
     usesRedirect: Boolean(probe.usesRedirect),
     statusFromQuery: Boolean(probe.statusFromQuery),
@@ -46,8 +48,13 @@ function capabilitiesOf(name) {
   return capabilities;
 }
 
-function gatewaysForMethod(method) {
-  return PREFERENCE.filter((name) => capabilitiesOf(name).methods.includes(method));
+function gatewaysForMethod(method, currency = null) {
+  return PREFERENCE.filter((name) => {
+    const capability = capabilitiesOf(name);
+    if (!capability.methods.includes(method)) return false;
+    if (currency && capability.currencies && !capability.currencies.includes(currency)) return false;
+    return true;
+  });
 }
 
 // Returns the adapter for a method, with this merchant's own credentials
@@ -56,7 +63,7 @@ function gatewaysForMethod(method) {
 // Demo mode short circuits everything: a simulated gateway, no external call,
 // no real money. It is enabled only by `npm run demo`, and the config refuses
 // to start the server with it set in production.
-async function getGateway({ merchantId, gateway = null, method = null, livemode = false } = {}) {
+async function getGateway({ merchantId, gateway = null, method = null, livemode = false, currency = null } = {}) {
   if (isDemo()) {
     const DemoGateway = ADAPTERS.demo();
     return new DemoGateway();
@@ -66,7 +73,8 @@ async function getGateway({ merchantId, gateway = null, method = null, livemode 
   // module back for its capability questions.
   const gatewayConfig = require("../services/gateway-config");
 
-  const chosen = gateway || (await gatewayConfig.gatewayForMethod({ merchantId, method, livemode }));
+  const chosen =
+    gateway || (await gatewayConfig.gatewayForMethod({ merchantId, method, livemode, currency }));
   const factory = ADAPTERS[chosen];
   if (!factory) throw new Error(`Unknown gateway: ${chosen}`);
 

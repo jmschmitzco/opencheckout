@@ -141,6 +141,12 @@ class PaypalGateway {
     return ["paypal"];
   }
 
+  // The subset of PayPal's settlement currencies this project formats. BRL is
+  // only held by a Brazilian account; others receive it converted.
+  get supportedCurrencies() {
+    return ["BRL", "USD", "EUR", "GBP", "CAD", "AUD", "MXN"];
+  }
+
   // PayPal will not charge again without the buyer approving. Brazil is not on
   // the list of countries with "save payment method", and merchant-initiated
   // billing needs manual approval of the account. So no renewals and no

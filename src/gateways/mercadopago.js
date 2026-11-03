@@ -118,6 +118,13 @@ class MercadoPagoGateway {
     return ["pix", "boleto"];
   }
 
+  // Pix and boleto are Brazilian instruments. A Mercado Pago account in
+  // another country sells other things through other methods, and that is a
+  // different adapter's job, not a silently wrong currency here.
+  get supportedCurrencies() {
+    return ["BRL"];
+  }
+
   // A Mercado Pago card token is SINGLE USE, so there is no saved credential
   // to charge again. That rules out renewals and one-click upsells through
   // this gateway, whatever the page does later.

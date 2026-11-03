@@ -127,6 +127,13 @@ class AsaasGateway {
     return ["pix", "card", "boleto"];
   }
 
+  // Asaas settles in reais only. Declaring it stops a session priced in
+  // another currency from being routed here and charged as if the number were
+  // reais, which is the same amount at a completely different price.
+  get supportedCurrencies() {
+    return ["BRL"];
+  }
+
   get supportsRecurring() {
     return true;
   }

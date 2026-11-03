@@ -146,13 +146,45 @@ async function list(merchantId, { status = null, customerId = null, limit = 50, 
 // Everything priced comes from the session row. `input` only carries what the
 // buyer legitimately chooses: who they are, how they want to pay, how many
 // instalments, and the card.
-async function createFromSession({ merchant, session, input = {}, remoteIp = null, userAgent = null }) {
+async function createFromSession({ merchant, session: loaded, input = {}, remoteIp = null, userAgent = null }) {
   const merchantId = merchant.id;
 
-  if (sessions.effectiveStatus(session) !== "open") {
-    throw conflict(`This checkout is ${sessions.effectiveStatus(session)}.`);
+  if (sessions.effectiveStatus(loaded) !== "open") {
+    throw conflict(`This checkout is ${sessions.effectiveStatus(loaded)}.`);
   }
 
+  // CLAIM THE SESSION BEFORE ANYTHING ELSE.
+  //
+  // This is what stops two tabs, or a double tap on a phone, from reaching the
+  // gateway twice. It also returns the row as it is NOW, so a coupon applied a
+  // second ago in another tab is honoured instead of the buyer being charged
+  // the old price.
+  //
+  // Everything from here on uses `session`, never the row the request loaded.
+  const session = await sessions.claimForCharge(merchantId, loaded.id);
+  if (!session) {
+    const current = await sessions.findByPublicId(merchantId, loaded.public_id);
+    const status = current ? sessions.effectiveStatus(current) : "expired";
+    throw conflict(
+      status === "open"
+        ? "A payment is already being processed for this checkout."
+        : `This checkout is ${status}.`
+    );
+  }
+
+  // From here a failure has to release the claim, or the buyer cannot retry.
+  try {
+    return await chargeClaimedSession({ merchant, session, input, remoteIp, userAgent });
+  } catch (err) {
+    await sessions.releaseClaim(merchantId, session.id).catch(() => {
+      /* releasing is best effort: the claim goes stale on its own */
+    });
+    throw err;
+  }
+}
+
+async function chargeClaimedSession({ merchant, session, input, remoteIp, userAgent }) {
+  const merchantId = merchant.id;
   const methods = String(session.payment_methods || "").split(",").filter(Boolean);
   const method = v.oneOf(input.method, methods);
   if (!method) {
@@ -164,6 +196,7 @@ async function createFromSession({ merchant, session, input = {}, remoteIp = nul
   const available = await gatewayConfig.availableMethods({
     merchantId,
     livemode: session.livemode,
+    currency: session.currency,
   });
   if (!available.includes(method)) {
     throw conflict(
@@ -352,6 +385,7 @@ async function chargeOrder({ merchant, order, customer, card, method, session })
     merchantId: merchant.id,
     method,
     livemode: order.livemode,
+    currency: order.currency,
   });
 
   const description = await describeOrder(merchant.id, order);
@@ -431,16 +465,35 @@ async function chargeOrder({ merchant, order, customer, card, method, session })
   }
 
   if (session) {
-    await sessions.markCompleted(merchant.id, session.id, order.id);
-    await emitSessionEvent(merchant.id, session, "checkout.session.completed", order);
-    // Taking this cart off the abandoned list can happen after the buyer has
-    // their answer. It is accessory work, and it is registered rather than
-    // dropped so a shutdown or a test can wait for it.
-    inBackground(() =>
-      ctx.withMerchant(merchant.id, () =>
-        require("./carts").markRecovered(merchant.id, session.id)
-      )
-    );
+    if (charge.status === "refused") {
+      // A DECLINE DOES NOT END THE CHECKOUT. The buyer reaches for another
+      // card, and the session has to still be there when they do. Closing it
+      // here meant a wrong security code was the end of the sale.
+      //
+      // The claim is released too, or the retry would be told that a payment
+      // is already being processed.
+      await sessions.releaseClaim(merchant.id, session.id);
+    } else {
+      await sessions.markCompleted(merchant.id, session.id, order.id);
+      await emitSessionEvent(merchant.id, session, "checkout.session.completed", order);
+
+      // The coupon is counted HERE, when an order exists, rather than when a
+      // code was typed. Counting on every attempt let one buyer trying three
+      // codes burn three redemptions of a limited coupon, and an abandoned
+      // cart burn one forever.
+      if (session.coupon_code) {
+        await require("./coupons").registerRedemption(merchant.id, session.coupon_code);
+      }
+
+      // Taking this cart off the abandoned list can happen after the buyer has
+      // their answer. It is accessory work, and it is registered rather than
+      // dropped so a shutdown or a test can wait for it.
+      inBackground(() =>
+        ctx.withMerchant(merchant.id, () =>
+          require("./carts").markRecovered(merchant.id, session.id)
+        )
+      );
+    }
   }
 
   return findById(merchant.id, order.id);
@@ -584,6 +637,27 @@ async function reconcile(merchantId, order) {
 
   if (!remote || !remote.status || remote.status === order.status) {
     return { status: order.status, changed: false };
+  }
+
+  // THE AMOUNT CHECK, the same rule the webhook applies.
+  //
+  // It lived only on the webhook path, and this is the path a Pix actually
+  // takes: the page polls, the server asks the gateway, and whatever came back
+  // was believed. A charge settled for less than the order would have released
+  // the product at the buyer's chosen price.
+  //
+  // A null amount means the gateway cannot give a comparable figure, for
+  // instance a per-instalment value, and that is not a mismatch.
+  if (
+    remote.status === "paid" &&
+    remote.amountCents != null &&
+    Number(remote.amountCents) !== Number(order.amount_cents)
+  ) {
+    console.error(
+      `[orders] Amount mismatch on ${order.public_id}: ` +
+        `${order.gateway} reports ${remote.amountCents}, order is ${order.amount_cents}.`
+    );
+    return { status: order.status, changed: false, amountMismatch: true };
   }
 
   const { changed, order: updated } = await markStatus(
