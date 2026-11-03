@@ -495,3 +495,139 @@ describe("first run", () => {
     expect(response.text).toContain("Sign in");
   });
 });
+
+// ===========================================================================
+describe("giving money back from the dashboard", () => {
+  // A paid sale on merchant one, which is the only state the panel appears in.
+  async function paidOrder(email) {
+    const session = await request(app)
+      .post("/v1/checkout/sessions")
+      .set("authorization", `Bearer ${one.secretKey}`)
+      .send({
+        line_items: [{ price: one.price.public_id }],
+        success_url: "https://acme.test/thanks",
+      });
+    const paid = await request(app)
+      .post(`/c/${session.body.id}/pay`)
+      .query({ k: session.body.client_secret })
+      .send({
+        method: "card",
+        buyer: { email, name: "Ada Lovelace", document: "52998224725", phone: "11988887777" },
+        card: { number: "4242424242424242", holder_name: "Ada Lovelace", expiry: "12/34", cvv: "123" },
+      });
+    return paid.body.order_id;
+  }
+
+  test("the panel offers the amount that is actually left", async () => {
+    const id = await paidOrder("refund-panel@example.com");
+    const { agent } = await signIn();
+    const page = await agent.get(`/dashboard/orders/${id}`);
+
+    expect(page.status).toBe(200);
+    expect(page.text).toContain("Refunds");
+    expect(page.text).toContain("All of what is left");
+  });
+
+  test("a partial refund leaves a PAID order, and the panel says why", async () => {
+    // The simulated gateway settles a card refund on the spot, as a real one
+    // does on the same authorization. What matters on the screen is that the
+    // sale is STILL PAID: the buyer kept what they bought.
+    const id = await paidOrder("refund-post@example.com");
+    const { agent, token } = await signIn();
+
+    const response = await agent
+      .post(`/dashboard/orders/${id}/refund`)
+      .type("form")
+      .send({ how: "part", amount: "19,90", reason: "Half the course", _csrf: token });
+    expect(response.status).toBe(302);
+
+    const page = await agent.get(`/dashboard/orders/${id}`);
+    expect(page.text).toContain("Half the course");
+    expect(page.text).toContain("succeeded");
+    expect(page.text).toContain("Given back");
+    expect(page.text).toContain("19,90");
+    expect(page.text).toMatch(/still a paid order/i);
+    // And the panel keeps warning about the asked-but-not-done case, which is
+    // what every other method answers.
+    expect(page.text).toMatch(/only done when they confirm/i);
+  });
+
+  test("without the CSRF token nothing is refunded", async () => {
+    const id = await paidOrder("refund-csrf@example.com");
+    const { agent } = await signIn();
+
+    const response = await agent
+      .post(`/dashboard/orders/${id}/refund`)
+      .type("form")
+      .send({ how: "all" });
+    expect(response.text).toMatch(/expired|another site/i);
+
+    const refunds = require("../src/services/refunds");
+    const rows = await asMerchant(one.merchant.id, () =>
+      db.query(`select count(*)::int as n from refunds where merchant_id = $1`, [one.merchant.id])
+    );
+    // Only the one the test above asked for.
+    expect(rows.rows[0].n).toBe(1);
+    expect(refunds.STATUSES).toContain("requested");
+  });
+
+  test("another merchant cannot refund this order", async () => {
+    const id = await paidOrder("refund-theirs@example.com");
+    const { agent, token } = await signIn("owner@two.test");
+
+    // The order does not exist for them, so the form comes back with that
+    // said rather than finding it. What matters is that no refund was created
+    // against somebody else's sale.
+    const response = await agent
+      .post(`/dashboard/orders/${id}/refund`)
+      .type("form")
+      .send({ how: "all", _csrf: token });
+    expect(response.status).toBe(302);
+
+    const rows = await asMerchant(one.merchant.id, () =>
+      db.query(
+        `select count(*)::int as n from refunds r
+           join orders o on o.id = r.order_id
+          where o.public_id = $1`,
+        [id],
+        { withoutMerchant: "the test is checking that nothing was written at all" }
+      )
+    );
+    expect(rows.rows[0].n).toBe(0);
+  });
+});
+
+// ===========================================================================
+describe("the disputes screen", () => {
+  test("says plainly that the money has already gone", async () => {
+    const { agent } = await signIn();
+    const page = await agent.get("/dashboard/disputes");
+
+    expect(page.status).toBe(200);
+    expect(page.text).toMatch(/money is gone/i);
+    // And it does not pretend evidence can be uploaded here.
+    expect(page.text).toMatch(/processor's own dashboard/i);
+  });
+
+  test("shows a dispute and the amount at stake, and only its own", async () => {
+    const disputes = require("../src/services/disputes");
+    await asMerchant(one.merchant.id, () =>
+      disputes.open({
+        merchantId: one.merchant.id,
+        order: null,
+        gateway: "demo",
+        gatewayDisputeId: "gw_dp_dash",
+        amountCents: 12345,
+        reason: "Unrecognised charge",
+      })
+    );
+
+    const mine = await (await signIn("owner@one.test")).agent.get("/dashboard/disputes");
+    expect(mine.text).toContain("Open right now");
+    expect(mine.text).toContain("123,45");
+    expect(mine.text).toContain("Unrecognised charge");
+
+    const theirs = await (await signIn("owner@two.test")).agent.get("/dashboard/disputes");
+    expect(theirs.text).not.toContain("Unrecognised charge");
+  });
+});

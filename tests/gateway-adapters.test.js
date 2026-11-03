@@ -332,6 +332,60 @@ describe("Asaas", () => {
         expect(event.status).toBeNull();
       }
     });
+
+    test("a PARTIAL refund reports the amount and does not say refunded", () => {
+      // Saying 'refunded' for half the money reverses a sale the buyer is
+      // still entitled to. The amount travels instead, and the caller adds it
+      // to the order's running total.
+      const gateway = new AsaasGateway(credentials);
+      const event = gateway.parseWebhook({
+        body: {
+          id: "evt_part",
+          event: "PAYMENT_PARTIALLY_REFUNDED",
+          payment: {
+            id: "pay_1",
+            value: 100,
+            refunds: [{ id: "ref_1", value: 30, status: "DONE" }],
+          },
+        },
+      });
+
+      expect(event.partialRefund).toBe(true);
+      expect(event.status).not.toBe("refunded");
+      expect(event.refundedCents).toBe(3000);
+      // The id is what makes a resent notification the same refund.
+      expect(event.gatewayRefundId).toBe("ref_1");
+    });
+
+    test("the newest refund is the one reported, not the first", () => {
+      const gateway = new AsaasGateway(credentials);
+      const event = gateway.parseWebhook({
+        body: {
+          id: "evt_two",
+          event: "PAYMENT_PARTIALLY_REFUNDED",
+          payment: {
+            id: "pay_2",
+            value: 100,
+            refunds: [
+              { id: "ref_1", value: 10 },
+              { id: "ref_2", value: 25 },
+            ],
+          },
+        },
+      });
+
+      expect(event.refundedCents).toBe(2500);
+      expect(event.gatewayRefundId).toBe("ref_2");
+    });
+
+    test("a refund with no amount says so, instead of guessing one", () => {
+      const gateway = new AsaasGateway(credentials);
+      const event = gateway.parseWebhook({
+        body: { id: "evt_quiet", event: "PAYMENT_REFUNDED", payment: { id: "pay_3", value: 100 } },
+      });
+      expect(event.status).toBe("refunded");
+      expect(event.refundedCents).toBeNull();
+    });
   });
 });
 
@@ -876,7 +930,7 @@ describe("PayPal", () => {
 
       expect(event.status).toBe("refunded");
       expect(event.gatewayCaptureId).toBe("CAP-9");
-      expect(event.refundCents).toBe(1000);
+      expect(event.refundedCents).toBe(1000);
     });
 
     test("a dispute finds the capture inside the disputed transaction", async () => {

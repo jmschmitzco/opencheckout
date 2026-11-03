@@ -1,0 +1,76 @@
+<%- include("partials/open", { title, lead: "Money a card network has already taken back." }) %>
+
+<section class="d-card d-card--note">
+  <p>
+    A dispute is not a refund. <strong>The money is gone when one opens</strong>:
+    the network takes it first and argues afterwards. The evidence that answers
+    it is uploaded in your processor's own dashboard, which is also where the
+    deadline lives. There is deliberately no button here that pretends otherwise.
+  </p>
+</section>
+
+<% if (open.count > 0) { %>
+  <section class="d-tiles">
+    <div class="d-tile">
+      <p class="d-tile__label">Open right now</p>
+      <p class="d-tile__value"><%= fmt(open.cents) %></p>
+      <p class="d-tile__note"><%= open.count %> being argued over</p>
+    </div>
+  </section>
+<% } %>
+
+<form class="d-filters" method="get" action="/dashboard/disputes">
+  <select class="d-input d-select" name="status" aria-label="Status">
+    <option value="">Any status</option>
+    <% statuses.forEach(function (one) { %>
+      <option value="<%= one %>" <%= status === one ? "selected" : "" %>><%= one %></option>
+    <% }); %>
+  </select>
+  <button class="d-btn" type="submit">Filter</button>
+  <% if (status) { %><a class="d-link" href="/dashboard/disputes">Clear</a><% } %>
+</form>
+
+<section class="d-card">
+  <% if (!rows.length) { %>
+    <p class="d-empty">
+      None, which is the number to aim for. A chargeback costs the amount plus a
+      fee, and too many of them cost the account.
+    </p>
+  <% } else { %>
+    <table class="d-table">
+      <thead>
+        <tr><th>Opened</th><th>Order</th><th>Buyer</th><th>Reason</th><th>Status</th><th class="d-right">Amount</th></tr>
+      </thead>
+      <tbody>
+        <% rows.forEach(function (row) { %>
+          <tr>
+            <td>
+              <small class="d-muted"><%= formatDate(row.opened_at) %></small>
+              <% if (row.respond_by) { %>
+                <br><small class="d-error">respond by <%= formatDate(row.respond_by, { withTime: false }) %></small>
+              <% } %>
+            </td>
+            <td>
+              <% if (row.order_public_id) { %>
+                <a class="d-mono" href="/dashboard/orders/<%= row.order_public_id %>"><%= row.order_public_id %></a>
+              <% } else { %>
+                <small class="d-muted">no matching order</small>
+              <% } %>
+            </td>
+            <td><%= row.email || "-" %></td>
+            <td><small class="d-muted"><%= row.reason || "" %></small></td>
+            <td>
+              <span class="d-pill d-pill--<%= row.status === "won" ? "paid" : row.status === "open" ? "pending" : "refused" %>">
+                <%= row.status %>
+              </span>
+              <br><small class="d-muted"><%= row.gateway %></small>
+            </td>
+            <td class="d-right"><%= fmt(row.amount_cents, row.currency) %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } %>
+</section>
+
+<%- include("partials/close") %>

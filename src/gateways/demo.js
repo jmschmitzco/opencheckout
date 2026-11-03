@@ -83,7 +83,7 @@ class DemoGateway {
       const outcome = known ? known.outcome : "paid";
 
       if (outcome === "refused") {
-        charges.set(id, { status: "refused", amountCents: order.amountCents });
+        charges.set(id, { status: "refused", amountCents: order.amountCents, method: "card" });
         return {
           gatewayChargeId: id,
           status: "refused",
@@ -91,7 +91,7 @@ class DemoGateway {
         };
       }
 
-      charges.set(id, { status: "paid", paidAt: new Date(), amountCents: order.amountCents });
+      charges.set(id, { status: "paid", paidAt: new Date(), amountCents: order.amountCents, method: "card" });
       return {
         gatewayChargeId: id,
         status: "paid",
@@ -109,7 +109,7 @@ class DemoGateway {
     // that may already have moved on, and the status is read by polling
     // anyway, which is exactly how the real thing works.
     const settlesAt = new Date(Date.now() + SETTLE_AFTER_MS);
-    charges.set(id, { status: "pending", settlesAt, amountCents: order.amountCents });
+    charges.set(id, { status: "pending", settlesAt, amountCents: order.amountCents, method: order.method });
 
     if (order.method === "pix") {
       // A payload shaped like a real Pix string, and a REAL QR image of it.
@@ -150,7 +150,7 @@ class DemoGateway {
       return { gatewayChargeId: null, status: "refused", refusalReason: "No saved card." };
     }
     const id = `demo_ch_${randomUrlToken(8)}`;
-    charges.set(id, { status: "paid", paidAt: new Date(), amountCents: order.amountCents });
+    charges.set(id, { status: "paid", paidAt: new Date(), amountCents: order.amountCents, method: "card" });
     return { gatewayChargeId: id, status: "paid", cardToken };
   }
 
@@ -168,11 +168,31 @@ class DemoGateway {
     return { status: charge.status, paidAt: charge.paidAt || null };
   }
 
-  async refund(gatewayChargeId) {
+  // A refund, answered the way the real ones answer.
+  //
+  // A CARD refund comes back settled: the money is given back on the same
+  // authorization, and the processor says so in the response. A Pix or boleto
+  // refund is a NEW transfer to the buyer's bank, so it comes back pending and
+  // is only confirmed later. The demo keeps that difference, because "asked"
+  // and "done" are the whole point of the refunds screen and a demo where
+  // everything settles instantly teaches the wrong lesson.
+  async refund(gatewayChargeId, { amountCents = null } = {}) {
     const charge = charges.get(gatewayChargeId);
-    if (!charge) return { ok: false };
-    charge.status = "refunded";
-    return { ok: true, refundId: `demo_re_${randomUrlToken(6)}` };
+    if (!charge) throw new Error("This simulated gateway never issued that charge.");
+    if (charge.status !== "paid") {
+      throw new Error(`A charge that is ${charge.status} cannot be refunded.`);
+    }
+
+    const whole = amountCents == null || Number(amountCents) >= Number(charge.amountCents);
+    charge.refundedCents = Number(charge.refundedCents || 0) + Number(amountCents == null ? charge.amountCents : amountCents);
+    if (whole) charge.status = "refunded";
+
+    return {
+      ok: true,
+      refundId: `demo_re_${randomUrlToken(6)}`,
+      refundStatus: charge.method === "card" ? "DONE" : "PENDING",
+      chargeStatus: charge.status,
+    };
   }
 
   // The simulated gateway sends no webhooks, because there is nothing on the

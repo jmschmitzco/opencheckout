@@ -31,7 +31,11 @@ different answers and an integrator deserves to know which one they got.
 - Three-layer white label with a per-session brand override
 - Multi-merchant isolation enforced at the query layer
 - Test mode keys that cannot reach a real processor
-- 150 tests against the real schema
+- Refunds, full and partial, where a request is not a refund and a partial one
+  leaves a PAID order, plus refunds issued in the processor's own dashboard
+- Disputes, recorded from the chargeback notifications, with the amount at
+  stake on its own screen
+- 392 tests against the real schema
 
 ## Next
 
@@ -45,18 +49,20 @@ and a gateway-specific step before submit.
 Until then `supportedMethods` leaves card out, so the method is never offered
 through Mercado Pago rather than being offered and failing.
 
-### 2. Refunds and disputes
-
-`POST /v1/orders/:id/refund`, partial and full, plus handling the dispute
-notifications the gateways send. The order statuses and the transition table
-already cover `refunded` and `chargeback`; what is missing is the route and
-the adapter calls behind it.
-
-### 3. Usage-based billing
+### 2. Usage-based billing
 
 Report usage against a subscription, bill it at period end. The pieces exist
 (ad hoc line items, the renewal loop); what is missing is a meter and the
 rollup.
+
+### 3. Answering a dispute from here
+
+A dispute is recorded, but the evidence that answers it is uploaded in the
+processor's own dashboard, and so is the deadline. Each of the four has its
+own evidence API, its own accepted file types and its own set of reason
+codes, so this is four integrations rather than one. Until they are written,
+the screen says where the evidence goes instead of offering a button that
+cannot submit it.
 
 ## Deliberately not built
 

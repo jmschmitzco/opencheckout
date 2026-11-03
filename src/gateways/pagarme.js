@@ -490,6 +490,22 @@ class PagarmeGateway {
       status: EVENT_STATUS[eventType] || null,
       amountCents: amount,
       currency: String(data.currency || "BRL").toUpperCase(),
+      // Pagar.me reports the refunded figure on the last transaction when the
+      // refund was partial. Null means it did not say.
+      refundedCents:
+        eventType === "charge.refunded" &&
+        data.last_transaction &&
+        typeof data.last_transaction.amount === "number"
+          ? data.last_transaction.amount
+          : null,
+      partialRefund: false,
+      // Pagar.me names the CHARGE on a refund notification, not the refund.
+      // Null, so the caller matches it against the oldest request still
+      // waiting on the order rather than against an id that is not one.
+      gatewayRefundId: null,
+      disputeId: eventType === "chargeback.received" ? data.id || null : null,
+      disputeReason:
+        eventType === "chargeback.received" && data.reason ? String(data.reason).slice(0, 300) : null,
     };
   }
 }

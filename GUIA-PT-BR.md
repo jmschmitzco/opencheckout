@@ -115,12 +115,14 @@ consulta nossa ao gateway**. O navegador pode mentir.
 - **O painel da empresa cliente**: entrar com senha, uma lista do que ainda
   falta para vender de verdade, colar a chave do gateway, escolher as cores com
   prévia ao vivo, e ver pedidos, assinaturas, clientes e avisos
-- 348 testes passando, incluindo os de três auditorias que eu mesmo fiz
+- **Estorno e disputa**: devolver o dinheiro todo ou só uma parte pelo painel
+  ou pela API, e a chargeback do cartão registrada numa tela própria
+- 392 testes passando, incluindo os de três auditorias que eu mesmo fiz
   (`docs/AUDITS.md` conta o que estava errado e por que importava)
 
 ### O que ainda falta
 
-Está tudo anotado em `docs/ROADMAP.md`. Os quatro principais, em ordem de
+Está tudo anotado em `docs/ROADMAP.md`. Os três principais, em ordem de
 importância:
 
 1. **Cartão pelo Mercado Pago.** O adaptador já sabe cobrar, mas o Mercado Pago
@@ -130,10 +132,14 @@ importância:
 2. **Troca de plano com cobrança proporcional.** Decidi não fazer pela metade:
    calcular errado a diferença de um plano para outro vira pedido de
    reembolso. Hoje trocar de plano encerra uma assinatura e começa outra.
+3. **Responder a disputa por aqui.** A disputa já fica registrada, mas enviar a
+   defesa continua sendo no painel do gateway. Cada um dos quatro tem a própria
+   API de documentos, o próprio tipo de arquivo aceito e a própria lista de
+   motivos: são quatro integrações, não uma.
 
 ---
 
-## 5. Três decisões que eu tomei e o porquê
+## 5. Quatro decisões que eu tomei e o porquê
 
 **O projeto não manda e-mail.** O carrinho abandonado dispara um aviso com o
 link de recuperação pronto, e quem manda o e-mail é o cliente, com a ferramenta
@@ -148,6 +154,16 @@ estar numa lista fechada, layout tem que ser uma das três palavras conhecidas.
 num campo de cor que aceita qualquer texto dá para injetar CSS, e com CSS dá
 para desenhar um formulário falso por cima do verdadeiro. Existe uma saída para
 quem instala sozinho e assume o risco, desligada por padrão.
+
+**Pedir estorno não é estornar, e estorno parcial não cancela a venda.** O
+painel nunca diz "devolvido" quando a gente só pediu: o gateway ainda pode
+recusar (Pix sem saldo na conta do vendedor, cartão recusado pelo banco), e
+quem avisa o comprador cedo demais tem que desdizer depois. E devolver metade
+deixa o pedido PAGO, porque o comprador continua com o que comprou: se virasse
+"reembolsado", o sistema do cliente tiraria um acesso que a pessoa ainda tem
+direito. A disputa é outra coisa: quando ela chega, o dinheiro JÁ saiu, e a
+defesa é enviada no painel do próprio gateway, que é onde ficam os documentos e
+o prazo. A tela diz isso, em vez de ter um botão que não resolve.
 
 **A tela só oferece a forma de pagamento que funciona.** Se a empresa não
 configurou gateway nenhum, a criação da sessão já falha, no servidor dela, onde

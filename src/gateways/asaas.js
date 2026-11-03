@@ -67,7 +67,9 @@ const EVENT_STATUS_MAP = {
   PAYMENT_DELETED: "expired", // a deleted charge will never be paid
   PAYMENT_RESTORED: null,
   PAYMENT_REFUNDED: "refunded",
-  PAYMENT_PARTIALLY_REFUNDED: null, // a partial refund does not reverse the order
+  // A partial refund does NOT reverse the order: the buyer still has what they
+  // bought. It is reported through `refundedCents` instead of a status.
+  PAYMENT_PARTIALLY_REFUNDED: null,
   PAYMENT_REFUND_IN_PROGRESS: null, // can still be denied; only REFUNDED is final
   PAYMENT_REFUND_DENIED: null, // the order never left paid, so nothing to do
   PAYMENT_RECEIVED_IN_CASH_UNDONE: null, // paid -> pending is not a legal move
@@ -500,7 +502,38 @@ class AsaasGateway {
       status: EVENT_STATUS_MAP[event] !== undefined ? EVENT_STATUS_MAP[event] : null,
       amountCents: this._comparableAmountCents(payment),
       currency: "BRL",
+      // How much went back in THIS event, when Asaas says. Null means "it did
+      // not say", which the caller reads as "match it against what we asked
+      // for" rather than guessing an amount.
+      refundedCents: this._refundedCents(payment),
+      partialRefund: event === "PAYMENT_PARTIALLY_REFUNDED",
+      // Asaas numbers each refund on the payment, which is what makes a
+      // resent notification recognisable as the same refund.
+      gatewayRefundId: this._refundId(payment),
+      // Asaas has no dispute resource of its own: a chargeback is reported on
+      // the payment, so there is no id to carry and the event id identifies
+      // the delivery instead.
+      disputeId: null,
+      disputeReason:
+        payment && payment.chargeback && payment.chargeback.reason
+          ? String(payment.chargeback.reason).slice(0, 300)
+          : null,
     };
+  }
+
+  // The newest refund's own id, or null.
+  _refundId(payment) {
+    const refunds = payment && Array.isArray(payment.refunds) ? payment.refunds : [];
+    const latest = refunds.length ? refunds[refunds.length - 1] : null;
+    return latest && latest.id ? String(latest.id) : null;
+  }
+
+  // The newest refund on the payment, in cents, or null.
+  _refundedCents(payment) {
+    const refunds = payment && Array.isArray(payment.refunds) ? payment.refunds : [];
+    const latest = refunds.length ? refunds[refunds.length - 1] : null;
+    if (!latest || typeof latest.value !== "number") return null;
+    return Math.round(latest.value * 100);
   }
 
   // -------------------------------------------------------------------

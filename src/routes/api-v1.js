@@ -240,6 +240,87 @@ router.get("/orders/:id", secretKeyOnly, async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// Refunds
+//
+// THE RESPONSE IS A REQUEST, NOT A RECEIPT. Most processors answer "pending",
+// and the refund is only real when `status` reaches "succeeded", which a
+// `refund.succeeded` webhook tells you about. Reading a 201 here as "the money
+// went back" is the mistake this endpoint is shaped to make obvious.
+// ---------------------------------------------------------------------------
+
+router.post("/orders/:id/refund", secretKeyOnly, async (req, res, next) => {
+  try {
+    const refunds = require("../services/refunds");
+    const merchants_ = require("../services/merchants");
+
+    const order = await orders.findByPublicId(req.merchantId, req.params.id);
+    if (!order) throw notFound("Order not found.");
+
+    const body = req.body || {};
+    const refund = await refunds.request({
+      merchant: await merchants_.current(),
+      order,
+      amountCents: body.amount_cents === undefined ? null : body.amount_cents,
+      reason: body.reason,
+      source: "api",
+    });
+
+    res.status(201).json(refunds.toApi(refund, order));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/orders/:id/refunds", secretKeyOnly, async (req, res, next) => {
+  try {
+    const refunds = require("../services/refunds");
+    const order = await orders.findByPublicId(req.merchantId, req.params.id);
+    if (!order) throw notFound("Order not found.");
+
+    const rows = await refunds.listForOrder(req.merchantId, order.id);
+    res.json({
+      object: "list",
+      data: rows.map((row) => refunds.toApi(row, order)),
+      has_more: false,
+      refundable_cents: await refunds.refundableCents(req.merchantId, order),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/refunds", secretKeyOnly, async (req, res, next) => {
+  try {
+    const refunds = require("../services/refunds");
+    const limit = limitOf(req, 50);
+    const rows = await refunds.list(req.merchantId, { status: req.query.status || null, limit });
+    res.json({ object: "list", data: rows.map((row) => refunds.toApi(row)), has_more: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Disputes
+//
+// Read only, on purpose. By the time one exists the money has already been
+// taken, and the evidence that answers it is uploaded in the processor's own
+// dashboard. A button here that cannot submit evidence would be worse than
+// not having one.
+// ---------------------------------------------------------------------------
+
+router.get("/disputes", secretKeyOnly, async (req, res, next) => {
+  try {
+    const disputes = require("../services/disputes");
+    const limit = limitOf(req, 50);
+    const rows = await disputes.list(req.merchantId, { status: req.query.status || null, limit });
+    res.json({ object: "list", data: rows.map((row) => disputes.toApi(row)), has_more: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Customers and entitlements
 //
 // The entitlement endpoint is the one a SaaS calls on login. It answers the

@@ -453,6 +453,14 @@ class MercadoPagoGateway {
       status: null,
       amountCents: null,
       currency: null,
+      refundedCents: null,
+      partialRefund: false,
+      // Nothing here carries a refund or a dispute id: the notification
+      // carries a resource id and an action, and statusFromQuery makes the
+      // handler ask Mercado Pago what actually happened.
+      gatewayRefundId: null,
+      disputeId: null,
+      disputeReason: null,
     };
   }
 }

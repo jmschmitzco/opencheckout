@@ -346,6 +346,13 @@ create table if not exists orders (
   boleto_barcode     text,
   boleto_due_date    date,
   refusal_reason     text,
+  -- HOW MUCH HAS ALREADY GONE BACK, as a running total.
+  --
+  -- It exists so that "how much can still be refunded" is one subtraction
+  -- rather than a sum over a table, and so that a partial refund is visible on
+  -- the order without changing its status. A partially refunded order is still
+  -- a paid order: the buyer still has what they bought.
+  refunded_cents     integer not null default 0,
   checkout_token     text not null,
   external_reference text,
   metadata           text not null default '{}',
@@ -392,6 +399,68 @@ create table if not exists charges (
   created_at        timestamptz not null default now()
 );
 create index if not exists charges_order_idx on charges (merchant_id, order_id);
+
+-- ---------------------------------------------------------------------------
+-- Refunds.
+--
+-- A ROW HERE IS A REQUEST, NOT A REFUND. The processor can still deny it: a
+-- Pix refund with no balance in the seller's account is refused, and a card
+-- refund can fail at the issuer. Only `succeeded` means the money moved, and
+-- what moves it from `requested` to `succeeded` is the gateway telling us so.
+--
+-- Treating the request as the fact is how a buyer loses their access for a
+-- refund that never happened.
+-- ---------------------------------------------------------------------------
+create table if not exists refunds (
+  id                serial primary key,
+  merchant_id       integer not null references merchants(id) on delete cascade,
+  order_id          integer not null references orders(id) on delete cascade,
+  public_id         text not null unique,          -- re_...
+  amount_cents      integer not null,
+  currency          text not null default 'BRL',
+  status            text not null default 'requested', -- requested | succeeded | failed | canceled
+  reason            text,
+  gateway           text,
+  gateway_refund_id text,
+  -- Who asked: 'dashboard', 'api', or 'gateway' for one issued directly in the
+  -- processor's own dashboard and learned about through a notification.
+  source            text not null default 'api',
+  failure_reason    text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  succeeded_at      timestamptz
+);
+create index if not exists refunds_order_idx on refunds (merchant_id, order_id);
+create index if not exists refunds_gateway_idx on refunds (gateway, gateway_refund_id);
+
+-- ---------------------------------------------------------------------------
+-- Disputes, which is what a chargeback is before anybody has won it.
+--
+-- The money is already gone when one opens: the card network takes it back
+-- first and argues later. So a dispute row is a record of an event, not a
+-- request, and it is kept separately from the refund table because the two
+-- are opposites: one is the merchant giving money back, the other is it being
+-- taken.
+-- ---------------------------------------------------------------------------
+create table if not exists disputes (
+  id                 serial primary key,
+  merchant_id        integer not null references merchants(id) on delete cascade,
+  order_id           integer references orders(id) on delete set null,
+  public_id          text not null unique,         -- dp_...
+  amount_cents       integer not null default 0,
+  currency           text not null default 'BRL',
+  status             text not null default 'open', -- open | won | lost | closed
+  reason             text,
+  gateway            text,
+  gateway_dispute_id text,
+  respond_by         timestamptz,
+  opened_at          timestamptz not null default now(),
+  resolved_at        timestamptz,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+create unique index if not exists disputes_gateway_idx on disputes (gateway, gateway_dispute_id);
+create index if not exists disputes_order_idx on disputes (merchant_id, order_id);
 
 -- ---------------------------------------------------------------------------
 -- Subscriptions

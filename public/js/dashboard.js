@@ -87,6 +87,18 @@
     sync();
   });
 
+  all("[data-d-refund-how]").forEach(function (select) {
+    var form = select.closest("form") || document;
+    var amount = form.querySelector("[data-d-refund-amount]");
+
+    var sync = function () {
+      if (amount) amount.hidden = select.value !== "part";
+    };
+
+    select.addEventListener("change", sync);
+    sync();
+  });
+
   all("[data-d-coupon-kind]").forEach(function (select) {
     var form = select.closest("form") || document;
     var currency = form.querySelector("[data-d-coupon-currency]");

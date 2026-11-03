@@ -122,6 +122,43 @@ async function handle(gatewayName, req, res) {
     // yet, and a PayPal order has no capture id until the capture happens.
     await rememberIdentifiers(resolved.merchantId, order, gatewayName, event);
 
+    // MONEY GOING BACK DOES NOT GO THROUGH markStatus.
+    //
+    // A refund has to move the order's running total and decide, from that,
+    // whether the sale is reversed at all: a partial refund leaves a paid
+    // order, because the buyer still has what they bought. Letting the status
+    // machine handle it would turn every partial refund into a full reversal.
+    if (event.status === "refunded" || event.partialRefund) {
+      const refunds = require("../services/refunds");
+      const applied = await refunds.applyFromGateway({
+        merchantId: resolved.merchantId,
+        order,
+        amountCents: event.refundedCents,
+        gatewayRefundId: event.gatewayRefundId || null,
+      });
+      const fresh = await orders.findById(resolved.merchantId, order.id);
+      return res.json({
+        received: true,
+        refund: applied ? applied.public_id : null,
+        status: fresh.status,
+      });
+    }
+
+    // A dispute is recorded before the order moves, so the amount at stake is
+    // on file even if the status transition is refused.
+    if (event.status === "chargeback") {
+      const disputes = require("../services/disputes");
+      await disputes.open({
+        merchantId: resolved.merchantId,
+        order,
+        gateway: gatewayName,
+        gatewayDisputeId: event.disputeId || event.eventId,
+        amountCents: event.amountCents,
+        currency: event.currency,
+        reason: event.disputeReason || event.eventType,
+      });
+    }
+
     const result = await orders.markStatus(
       resolved.merchantId,
       order.id,

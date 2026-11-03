@@ -113,8 +113,42 @@ class ExampleGateway {
   status: NormalizedStatus | null,  // null when the event changes nothing
   amountCents: number | null,
   currency: 'BRL' | null,
+
+  // ---- money going back ------------------------------------------------
+  // How much went back in THIS event. null means the gateway did not say,
+  // which the caller reads as "match it against what we asked for" rather
+  // than guessing an amount.
+  refundedCents: number | null,
+  // True on a partial refund, where `status` must NOT be 'refunded': the
+  // buyer still has what they bought, so the order stays paid.
+  partialRefund: boolean,
+  // The gateway's own id for the refund, where it gives one. It is what makes
+  // a resent notification recognisable as the same refund.
+  gatewayRefundId: 'RE_1' | null,
+  // On a chargeback: the gateway's dispute id, and its reason code or text.
+  disputeId: 'DIS_1' | null,
+  disputeReason: string | null,
 }
 ```
+
+## Refund
+
+```js
+{
+  ok: true,
+  refundId: 'RE_1' | null,
+  // The gateway's own word for where the refund got to. ONLY 'DONE',
+  // 'SUCCEEDED' or 'COMPLETED' is read as money that has moved; anything
+  // else, including 'PENDING' and a missing value, leaves the refund waiting
+  // for a notification. A request is not a refund: the gateway can still
+  // refuse it, and a merchant told otherwise tells their buyer.
+  refundStatus: 'DONE' | 'PENDING' | string | undefined,
+  chargeStatus: NormalizedStatus | undefined,
+}
+```
+
+A `refund` that cannot be performed THROWS. Returning something falsy and
+leaving the caller to guess is how a failed refund becomes a refunded order.
 
 ## Normalized status
 
@@ -141,6 +175,11 @@ since anybody last looked.
   anybody mark an order paid.
 - **Where the signature covers a timestamp, check its age.** Otherwise a
   captured notification is valid forever.
+- **A partial refund is not a refunded order.** Report it with
+  `partialRefund: true` and the amount, and leave `status` alone. The caller
+  adds it to the order's running total and decides from that whether the sale
+  is reversed at all; an adapter that reports 'refunded' for half the money
+  revokes an entitlement somebody still has.
 - Use `fetchWithTimeout` from `lib/http`. A gateway that accepts a request and
   never answers must not hold a connection until the buyer gives up, and a
   timeout is reported as a timeout, never as a refusal.

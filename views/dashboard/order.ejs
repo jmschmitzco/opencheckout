@@ -33,6 +33,17 @@
         <% if (order.refusal_reason) { %>
           <div><dt>Reason</dt><dd><%= order.refusal_reason %></dd></div>
         <% } %>
+        <% if (order.refunded_cents > 0) { %>
+          <div><dt>Given back</dt><dd>
+            <%= fmt(order.refunded_cents) %>
+            <% if (order.refunded_cents < order.amount_cents) { %>
+              <br><small class="d-muted">
+                Partly refunded, so this is still a paid order: the buyer keeps
+                what they bought.
+              </small>
+            <% } %>
+          </dd></div>
+        <% } %>
         <% if (order.external_reference) { %>
           <div><dt>Your reference</dt><dd class="d-mono"><%= order.external_reference %></dd></div>
         <% } %>
@@ -54,6 +65,104 @@
         </p>
       <% } %>
     </section>
+
+    <% if (refundable > 0 || refunds.length) { %>
+      <section class="d-card">
+        <h2 class="d-card__title">
+          Refunds
+          <% if (order.refunded_cents > 0) { %>
+            <span class="d-chip"><%= fmt(order.refunded_cents) %> back</span>
+          <% } %>
+        </h2>
+
+        <% if (refunds.length) { %>
+          <table class="d-table">
+            <thead><tr><th>When</th><th>Amount</th><th>Status</th><th>Why</th></tr></thead>
+            <tbody>
+              <% refunds.forEach(function (refund) { %>
+                <tr>
+                  <td><small class="d-muted"><%= formatDate(refund.created_at) %></small></td>
+                  <td><%= fmt(refund.amount_cents, refund.currency) %></td>
+                  <td>
+                    <span class="d-pill d-pill--<%= refund.status === "succeeded" ? "paid" : refund.status === "failed" ? "refused" : "pending" %>">
+                      <%= refund.status %>
+                    </span>
+                    <% if (refund.source === "gateway") { %>
+                      <br><small class="d-muted">made in <%= refund.gateway %></small>
+                    <% } %>
+                  </td>
+                  <td>
+                    <small class="d-muted"><%= refund.reason || "" %></small>
+                    <% if (refund.failure_reason) { %>
+                      <br><small class="d-error"><%= refund.failure_reason %></small>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        <% } %>
+
+        <% if (refundable > 0) { %>
+          <form class="d-form" method="post" action="/dashboard/orders/<%= order.public_id %>/refund"
+                data-d-confirm="Send money back to the buyer? This cannot be taken back.">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+            <label class="d-label" for="how">How much</label>
+            <select class="d-input d-select" id="how" name="how" data-d-refund-how>
+              <option value="all">All of what is left, <%= fmt(refundable) %></option>
+              <option value="part">Part of it</option>
+            </select>
+
+            <div data-d-refund-amount hidden>
+              <label class="d-label" for="amount">Amount</label>
+              <input class="d-input" id="amount" name="amount" type="text" inputmode="decimal"
+                     placeholder="19,90">
+              <p class="d-hint">
+                At most <%= fmt(refundable) %>. A partial refund leaves this a PAID
+                order, because the buyer still has what they bought.
+              </p>
+            </div>
+
+            <label class="d-label" for="reason">Why, for your own records</label>
+            <input class="d-input" id="reason" name="reason" type="text" maxlength="300">
+
+            <button class="d-btn d-btn--quiet" type="submit">Send it back</button>
+            <p class="d-hint">
+              This ASKS <%= order.gateway || "the gateway" %> to refund. Most answer
+              "pending": it is only done when they confirm, which shows above as
+              succeeded. Until then, do not tell the buyer it has gone.
+            </p>
+          </form>
+        <% } else if (order.status === "paid") { %>
+          <p class="d-hint">Nothing left to refund on this order.</p>
+        <% } %>
+      </section>
+    <% } %>
+
+    <% if (disputes.length) { %>
+      <section class="d-card">
+        <h2 class="d-card__title">Disputes</h2>
+        <table class="d-table">
+          <thead><tr><th>Opened</th><th>Amount</th><th>Status</th><th>Reason</th></tr></thead>
+          <tbody>
+            <% disputes.forEach(function (dispute) { %>
+              <tr>
+                <td><small class="d-muted"><%= formatDate(dispute.opened_at) %></small></td>
+                <td><%= fmt(dispute.amount_cents, dispute.currency) %></td>
+                <td><span class="d-pill d-pill--<%= dispute.status === "won" ? "paid" : dispute.status === "open" ? "pending" : "refused" %>"><%= dispute.status %></span></td>
+                <td><small class="d-muted"><%= dispute.reason || "" %></small></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+        <p class="d-hint">
+          The money was taken when this opened. The evidence that answers it is
+          uploaded in <%= order.gateway || "the processor" %>'s own dashboard,
+          which is where the deadline lives too.
+        </p>
+      </section>
+    <% } %>
 
     <section class="d-card">
       <h2 class="d-card__title">What was bought</h2>

@@ -21,6 +21,8 @@ const PREFIXES = {
   order: "ord",
   subscription: "sub",
   offer: "off",
+  refund: "re",
+  dispute: "dp",
   event: "evt",
   webhookEndpoint: "we",
 };

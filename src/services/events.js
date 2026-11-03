@@ -23,6 +23,18 @@ const EVENT_TYPES = [
   "order.refunded",
   "order.chargeback",
   "order.expired",
+  // A partial refund does NOT make an order refunded: the buyer still has what
+  // they bought. It gets its own event so an integrator can act on the money
+  // without being told the sale was reversed.
+  "order.partially_refunded",
+  // Refunds have their own lifecycle, because a REQUEST is not a refund and
+  // the gap between the two is where the interesting failures live.
+  "refund.created",
+  "refund.succeeded",
+  "refund.failed",
+  // Disputes. The money is already gone when one opens.
+  "dispute.opened",
+  "dispute.closed",
   // Subscriptions
   "subscription.created",
   "subscription.activated",
@@ -38,7 +50,19 @@ const EVENT_TYPES = [
 // subscribes to and reads in the payload; this only changes the label.
 const EVENT_GROUPS = [
   { group: "Payments", events: ["order.paid", "order.refused", "order.created", "order.expired"] },
-  { group: "Reversals", events: ["order.refunded", "order.chargeback"] },
+  {
+    group: "Reversals",
+    events: [
+      "order.refunded",
+      "order.partially_refunded",
+      "order.chargeback",
+      "refund.created",
+      "refund.succeeded",
+      "refund.failed",
+      "dispute.opened",
+      "dispute.closed",
+    ],
+  },
   {
     group: "Subscriptions",
     events: [

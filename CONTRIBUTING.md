@@ -20,7 +20,7 @@ bug worth reporting on its own.
 npm test
 ```
 
-348 tests, no network. The exit code is meaningful, so trust it.
+392 tests, no network. The exit code is meaningful, so trust it.
 
 ## What a change needs
 

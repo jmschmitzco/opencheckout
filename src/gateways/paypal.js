@@ -562,10 +562,16 @@ class PaypalGateway {
           : null,
       // A PARTIAL refund reports what was given back. Without it, returning
       // 10% would mark the whole order refunded.
-      refundCents:
+      refundedCents:
         type === "PAYMENT.CAPTURE.REFUNDED" && resource.amount
           ? toCents(resource.amount.value)
           : null,
+      partialRefund: false,
+      // The refund's own id, so a resent notification is recognised rather
+      // than applied twice.
+      gatewayRefundId: type === "PAYMENT.CAPTURE.REFUNDED" ? resource.id || null : null,
+      disputeId: type === "CUSTOMER.DISPUTE.CREATED" ? resource.dispute_id || null : null,
+      disputeReason: type === "CUSTOMER.DISPUTE.CREATED" ? resource.reason || null : null,
     };
   }
 }

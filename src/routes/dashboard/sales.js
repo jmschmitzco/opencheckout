@@ -81,7 +81,11 @@ router.get(
       });
     }
 
-    const [items, customer, charges, children, parent] = await Promise.all([
+    const refunds = require("../../services/refunds");
+    const disputes = require("../../services/disputes");
+
+    const [items, customer, charges, children, parent, refundRows, disputeRows, refundable] =
+      await Promise.all([
       orders.itemsOf(req.merchantId, order.id),
       order.customer_id ? customers.findById(req.merchantId, order.customer_id) : null,
       db.query(
@@ -95,6 +99,9 @@ router.get(
         [req.merchantId, order.id]
       ),
       order.parent_order_id ? orders.findById(req.merchantId, order.parent_order_id) : null,
+      refunds.listForOrder(req.merchantId, order.id),
+      disputes.listForOrder(req.merchantId, order.id),
+      refunds.refundableCents(req.merchantId, order),
     ]);
 
     res.render("dashboard/order", {
@@ -105,6 +112,9 @@ router.get(
       charges: charges.rows,
       children: children.rows,
       parent,
+      refunds: refundRows,
+      disputes: disputeRows,
+      refundable,
       fmt: (cents, currency) => money.formatMoney(cents, currency || order.currency),
       formatDate,
     });
@@ -136,6 +146,73 @@ router.post(
       res.flash("ok", `No change. The gateway still says ${result.status}.`);
     }
     res.redirect(`/dashboard/orders/${req.params.id}`);
+  })
+);
+
+// Gives money back.
+//
+// The flash deliberately does NOT say "refunded". Most processors answer
+// "pending", and telling a merchant it is done when it is merely asked for is
+// how somebody assures a customer of something that has not happened.
+router.post(
+  "/orders/:id/refund",
+  formPost(async (req, res) => {
+    const refunds = require("../../services/refunds");
+    const merchants = require("../../services/merchants");
+    const money = require("../../lib/money");
+
+    const order = await orders.findByPublicId(req.merchantId, req.params.id);
+    if (!order) throw require("../../lib/errors").notFound("Order not found.");
+
+    const body = req.body || {};
+    const whole = String(body.how || "all") === "all";
+    const amountCents = whole ? null : money.parseAmountToCents(body.amount, order.currency);
+    if (!whole && (!Number.isFinite(amountCents) || amountCents <= 0)) {
+      throw require("../../lib/errors").badRequest("Enter an amount, like 19,90.");
+    }
+
+    const refund = await refunds.request({
+      merchant: await merchants.current(),
+      order,
+      amountCents,
+      reason: body.reason,
+      source: "dashboard",
+    });
+
+    res.flash(
+      "ok",
+      refund.status === "succeeded"
+        ? `${money.formatMoney(refund.amount_cents, refund.currency)} is on its way back.`
+        : `Asked ${order.gateway} to send back ${money.formatMoney(refund.amount_cents, refund.currency)}. ` +
+            "It is not done until they confirm it, which shows here as succeeded."
+    );
+    res.redirect(`/dashboard/orders/${order.public_id}`);
+  })
+);
+
+// ---------------------------------------------------------------------------
+// Disputes
+// ---------------------------------------------------------------------------
+
+router.get(
+  "/disputes",
+  withMerchant(async (req, res) => {
+    const disputes = require("../../services/disputes");
+    const money = require("../../lib/money");
+    const [rows, open] = await Promise.all([
+      disputes.list(req.merchantId, { status: v.oneOf(req.query.status, disputes.STATUSES) }),
+      disputes.openAmount(req.merchantId),
+    ]);
+
+    res.render("dashboard/disputes", {
+      title: "Disputes",
+      rows,
+      open,
+      status: v.oneOf(req.query.status, disputes.STATUSES),
+      statuses: disputes.STATUSES,
+      fmt: (cents, currency) => money.formatMoney(cents, currency),
+      formatDate,
+    });
   })
 );
 

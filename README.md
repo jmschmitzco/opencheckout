@@ -228,6 +228,8 @@ trade.
 | Dashboard | Sign in, connect a gateway, theme the checkout, read the sales |
 | Order bump | A tick box in the checkout that joins the same charge |
 | Upsell and downsell | One click after payment, against the saved card |
+| Refunds | Full or partial, and a partial one leaves a PAID order |
+| Disputes | Recorded from the gateway, with the amount at stake on one screen |
 | Coupons | Percentage or fixed, limits, once per customer |
 | Abandoned carts | A `cart.abandoned` event with a working recovery link |
 | White label | Three theme layers, per-session override |
@@ -304,7 +306,7 @@ Every one of these is here because the alternative loses money or leaks data.
 npm test
 ```
 
-348 tests against the real schema, in an in-memory PostgreSQL, with a simulated
+392 tests against the real schema, in an in-memory PostgreSQL, with a simulated
 gateway. No network, no credentials, and the exit code is meaningful.
 
 That includes the regression tests from three adversarial audits of this
