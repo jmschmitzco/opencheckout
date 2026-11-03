@@ -171,3 +171,151 @@ describe("a charge that does not belong to us", () => {
     expect(theirs).toBeNull();
   });
 });
+
+// ===========================================================================
+describe("a notification about money going back", () => {
+  // The route's decisions are what is under test here, not an adapter's
+  // parsing, so the simulated gateway is made to verify and to answer with a
+  // crafted event. That is the only way to drive the handler itself: the
+  // adapters are tested without a network in their own file.
+  const DemoGateway = require("../src/gateways/demo");
+
+  async function deliver(event, { verify = true } = {}) {
+    const realVerify = DemoGateway.prototype.verifyWebhook;
+    const realParse = DemoGateway.prototype.parseWebhook;
+    DemoGateway.prototype.verifyWebhook = () => verify;
+    DemoGateway.prototype.parseWebhook = () => event;
+    try {
+      return await request(app)
+        .post(`/gateway-webhooks/asaas/${seed.webhookToken}`)
+        .send({ anything: true });
+    } finally {
+      DemoGateway.prototype.verifyWebhook = realVerify;
+      DemoGateway.prototype.parseWebhook = realParse;
+    }
+  }
+
+  // A paid order that belongs to the gateway the notification claims to come
+  // from. The demo makes the charge; the row is relabelled because the route
+  // deliberately refuses to let one processor's notification move another
+  // processor's order.
+  async function asaasOrder(email, { paid = true } = {}) {
+    const { order } = await pendingOrder(email);
+    await asMerchant(seed.merchant.id, async () => {
+      await db.query(`update orders set gateway = 'asaas' where merchant_id = $1 and id = $2`, [
+        seed.merchant.id,
+        order.id,
+      ]);
+      if (paid) await orders.markStatus(seed.merchant.id, order.id, "paid", "test");
+    });
+    return asMerchant(seed.merchant.id, () => orders.findById(seed.merchant.id, order.id));
+  }
+
+  test("a PARTIAL refund for less than the order is applied, not dropped", async () => {
+    // THE TRAP. The amount check exists to stop a "paid" for a fraction of
+    // the price. Letting it judge a refund as well would answer 202 and throw
+    // the notification away: the money gone from the merchant's account, the
+    // order still saying it received all of it, and nobody told.
+    const order = await asaasOrder("partial-hook@example.com");
+
+    const response = await deliver({
+      eventId: "evt_partial_hook",
+      eventType: "PAYMENT_PARTIALLY_REFUNDED",
+      gatewayChargeId: order.gateway_charge_id,
+      externalReference: order.public_id,
+      status: null,
+      amountCents: 3000,
+      currency: "BRL",
+      refundedCents: 3000,
+      partialRefund: true,
+      gatewayRefundId: "ref_hook_1",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.amount_mismatch).toBeUndefined();
+    expect(response.body.refund).toMatch(/^re_/);
+
+    const after = await asMerchant(seed.merchant.id, () =>
+      orders.findById(seed.merchant.id, order.id)
+    );
+    expect(after.refunded_cents).toBe(3000);
+    // Still paid: the buyer kept what they bought.
+    expect(after.status).toBe("paid");
+  });
+
+  test("a full refund reverses the order", async () => {
+    const order = await asaasOrder("full-hook@example.com");
+
+    const response = await deliver({
+      eventId: "evt_full_hook",
+      eventType: "PAYMENT_REFUNDED",
+      gatewayChargeId: order.gateway_charge_id,
+      externalReference: order.public_id,
+      status: "refunded",
+      amountCents: order.amount_cents,
+      currency: "BRL",
+      refundedCents: null,
+      partialRefund: false,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("refunded");
+  });
+
+  test("a chargeback opens a dispute and moves the order", async () => {
+    const order = await asaasOrder("chargeback-hook@example.com");
+
+    const response = await deliver({
+      eventId: "evt_cb_hook",
+      eventType: "PAYMENT_CHARGEBACK_REQUESTED",
+      gatewayChargeId: order.gateway_charge_id,
+      externalReference: order.public_id,
+      status: "chargeback",
+      amountCents: order.amount_cents,
+      currency: "BRL",
+      disputeId: "dis_hook_1",
+      disputeReason: "Unrecognised charge",
+    });
+
+    expect(response.status).toBe(200);
+
+    const disputes = require("../src/services/disputes");
+    const rows = await asMerchant(seed.merchant.id, () =>
+      disputes.listForOrder(seed.merchant.id, order.id)
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].amount_cents).toBe(order.amount_cents);
+    expect(rows[0].reason).toBe("Unrecognised charge");
+
+    const after = await asMerchant(seed.merchant.id, () =>
+      orders.findById(seed.merchant.id, order.id)
+    );
+    expect(after.status).toBe("chargeback");
+  });
+
+  test("and a PAID for less than the order is still refused", async () => {
+    // The check that the test above steps around must still be there for the
+    // case it was written for.
+    const order = await asaasOrder("short-paid@example.com", { paid: false });
+
+    const response = await deliver({
+      eventId: "evt_short_paid",
+      eventType: "PAYMENT_RECEIVED",
+      gatewayChargeId: order.gateway_charge_id,
+      externalReference: order.public_id,
+      status: "paid",
+      amountCents: 1,
+      currency: "BRL",
+      refundedCents: null,
+      partialRefund: false,
+    });
+
+    expect(response.status).toBe(202);
+    expect(response.body.amount_mismatch).toBe(true);
+
+    const after = await asMerchant(seed.merchant.id, () =>
+      orders.findById(seed.merchant.id, order.id)
+    );
+    expect(after.status).toBe("pending");
+  });
+});

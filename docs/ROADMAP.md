@@ -35,7 +35,7 @@ different answers and an integrator deserves to know which one they got.
   leaves a PAID order, plus refunds issued in the processor's own dashboard
 - Disputes, recorded from the chargeback notifications, with the amount at
   stake on its own screen
-- 392 tests against the real schema
+- 396 tests against the real schema
 
 ## Next
 

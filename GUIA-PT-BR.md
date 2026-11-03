@@ -117,7 +117,7 @@ consulta nossa ao gateway**. O navegador pode mentir.
   prévia ao vivo, e ver pedidos, assinaturas, clientes e avisos
 - **Estorno e disputa**: devolver o dinheiro todo ou só uma parte pelo painel
   ou pela API, e a chargeback do cartão registrada numa tela própria
-- 392 testes passando, incluindo os de três auditorias que eu mesmo fiz
+- 396 testes passando, incluindo os de três auditorias que eu mesmo fiz
   (`docs/AUDITS.md` conta o que estava errado e por que importava)
 
 ### O que ainda falta

@@ -92,42 +92,24 @@ async function handle(gatewayName, req, res) {
       return res.json({ received: true, unknown_charge: true });
     }
 
-    // Some gateways tell us which charge changed and nothing else. For those,
-    // the only honest move is to ask, server to server, rather than guess from
-    // a notification that states no status.
-    if (gateway.statusFromQuery || !event.status) {
-      const reconciled = await orders.reconcile(resolved.merchantId, order);
-      return res.json({
-        received: true,
-        changed: reconciled.changed,
-        status: reconciled.status,
-        source: "query",
-      });
-    }
-
-    // THE AMOUNT CHECK. When the notification states an amount, it has to
-    // match what we charged. A "paid" for less than the order is not a paid
-    // order, and without this check a mismatched notification would release
-    // the product for a fraction of the price.
-    if (event.amountCents != null && Number(event.amountCents) !== Number(order.amount_cents)) {
-      console.error(
-        `[gateway-webhooks] Amount mismatch on ${order.public_id}: ` +
-          `notification says ${event.amountCents}, order is ${order.amount_cents}.`
-      );
-      return res.status(202).json({ received: true, amount_mismatch: true });
-    }
-
-    // Learn the identifiers this notification taught us, before the status
-    // changes. An order rescued by its external reference has no charge id
+    // Learn the identifiers this notification taught us, before anything
+    // reads them. An order rescued by its external reference has no charge id
     // yet, and a PayPal order has no capture id until the capture happens.
     await rememberIdentifiers(resolved.merchantId, order, gatewayName, event);
 
-    // MONEY GOING BACK DOES NOT GO THROUGH markStatus.
+    // MONEY GOING BACK COMES FIRST, and it does not go through markStatus.
     //
-    // A refund has to move the order's running total and decide, from that,
-    // whether the sale is reversed at all: a partial refund leaves a paid
-    // order, because the buyer still has what they bought. Letting the status
-    // machine handle it would turn every partial refund into a full reversal.
+    // It is first because a PARTIAL refund carries NO STATUS: it does not
+    // change what the order is, only how much of it the merchant kept. Left
+    // further down, it would fall into the "no status, go and ask" branch
+    // below, the gateway would answer that the charge is still paid, and the
+    // refund would never be recorded: money gone from the merchant's account
+    // with the order still saying it received all of it.
+    //
+    // And it skips markStatus because the running total is what decides
+    // whether the sale is reversed at all. Letting the status machine handle
+    // it would turn every partial refund into a full reversal, and revoke an
+    // entitlement the buyer still has.
     if (event.status === "refunded" || event.partialRefund) {
       const refunds = require("../services/refunds");
       const applied = await refunds.applyFromGateway({
@@ -157,6 +139,39 @@ async function handle(gatewayName, req, res) {
         currency: event.currency,
         reason: event.disputeReason || event.eventType,
       });
+    }
+
+    // Some gateways tell us which charge changed and nothing else. For those,
+    // the only honest move is to ask, server to server, rather than guess from
+    // a notification that states no status.
+    if (gateway.statusFromQuery || !event.status) {
+      const reconciled = await orders.reconcile(resolved.merchantId, order);
+      return res.json({
+        received: true,
+        changed: reconciled.changed,
+        status: reconciled.status,
+        source: "query",
+      });
+    }
+
+    // THE AMOUNT CHECK. When the notification states an amount, it has to
+    // match what we charged. A "paid" for less than the order is not a paid
+    // order, and without this check a mismatched notification would release
+    // the product for a fraction of the price.
+    //
+    // A CHARGEBACK IS EXEMPT: the network can take back part of a sale, and
+    // a smaller amount there is ordinary rather than suspicious. Refunds
+    // never reach this line; they returned above.
+    if (
+      event.status !== "chargeback" &&
+      event.amountCents != null &&
+      Number(event.amountCents) !== Number(order.amount_cents)
+    ) {
+      console.error(
+        `[gateway-webhooks] Amount mismatch on ${order.public_id}: ` +
+          `notification says ${event.amountCents}, order is ${order.amount_cents}.`
+      );
+      return res.status(202).json({ received: true, amount_mismatch: true });
     }
 
     const result = await orders.markStatus(
