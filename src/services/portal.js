@@ -77,10 +77,16 @@ async function consume(token) {
   if (new Date(row.expires_at) <= new Date()) return null;
   if (!safeEqual(row.token, clean)) return null;
 
-  await db.query(
-    `update portal_sessions set used_at = now() where merchant_id = $1 and id = $2`,
+  // SINGLE USE HAS TO BE ATOMIC. Checking `used_at` and then setting it lets
+  // two requests arriving together both pass, which is exactly the shape of a
+  // link opened twice by an email client that prefetches.
+  const claimed = await db.query(
+    `update portal_sessions set used_at = now()
+      where merchant_id = $1 and id = $2 and used_at is null
+      returning id`,
     [row.merchant_id, row.id]
   );
+  if (!claimed.rows[0]) return null;
 
   return {
     merchantId: row.merchant_id,

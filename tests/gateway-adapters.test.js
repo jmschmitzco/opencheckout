@@ -568,7 +568,21 @@ describe("Mercado Pago", () => {
     test("rejects a tampered signature", () => {
       const gateway = new MercadoPagoGateway(credentials);
       const req = signed();
-      req.headers["x-signature"] = req.headers["x-signature"].replace(/v1=./, "v1=0");
+      // Flip the first hex digit to a DIFFERENT one. Replacing it with a fixed
+      // character is a coin flip: when the real digit already was that
+      // character, the signature is unchanged and the test passes for the
+      // wrong reason, about one run in sixteen.
+      req.headers["x-signature"] = req.headers["x-signature"].replace(
+        /v1=(.)/,
+        (_match, digit) => `v1=${digit === "a" ? "b" : "a"}`
+      );
+      expect(gateway.verifyWebhook(req)).toBe(false);
+    });
+
+    test("rejects a signature of the right shape but the wrong length", () => {
+      const gateway = new MercadoPagoGateway(credentials);
+      const req = signed();
+      req.headers["x-signature"] = req.headers["x-signature"].slice(0, -4);
       expect(gateway.verifyWebhook(req)).toBe(false);
     });
 

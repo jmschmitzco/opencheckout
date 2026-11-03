@@ -95,6 +95,11 @@ async function release(scope, key) {
 function middleware(scope) {
   return async (req, res, next) => {
     const key = String(req.get("idempotency-key") || "").trim();
+    // The key is chosen by the caller, so it is namespaced by merchant as well
+    // as by route. Without that, one merchant picking "order-1" can make
+    // another merchant's "order-1" come back as a 409 or, worse, return the
+    // stored answer of a request that was never theirs.
+    const scopedTo = req.merchantId ? `${scope}:m${req.merchantId}` : scope;
     if (!key) return next();
     if (!isValidKey(key)) {
       return res.status(400).json({
@@ -107,7 +112,7 @@ function middleware(scope) {
 
     let reservation;
     try {
-      reservation = await reserve(scope, key, req.merchantId || null);
+      reservation = await reserve(scopedTo, key, req.merchantId || null);
     } catch (err) {
       return next(err);
     }
@@ -132,9 +137,9 @@ function middleware(scope) {
     // Hands the route the two calls it needs to close the loop.
     req.idempotency = {
       key,
-      scope,
-      complete: (httpStatus, body, orderId) => complete(scope, key, { httpStatus, body, orderId }),
-      release: () => release(scope, key),
+      scope: scopedTo,
+      complete: (httpStatus, body, orderId) => complete(scopedTo, key, { httpStatus, body, orderId }),
+      release: () => release(scopedTo, key),
     };
     return next();
   };

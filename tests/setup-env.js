@@ -35,3 +35,8 @@ process.env.BASE_URL = "http://localhost:3000";
 // reach a real payment processor.
 process.env.OPENCHECKOUT_DEMO = "1";
 process.env.TRUSTED_PROXY_HOPS = "0";
+// The test suite registers webhook endpoints on .test hostnames, which resolve
+// nowhere. The outbound address guard is bypassed here and exercised directly,
+// with a stubbed resolver, in audit-security.test.js. One integration test
+// turns the bypass off again to prove the wiring is real.
+process.env.OPENCHECKOUT_ALLOW_PRIVATE_WEBHOOKS = "1";

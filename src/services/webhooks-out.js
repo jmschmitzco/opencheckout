@@ -25,6 +25,7 @@ const ids = require("../lib/ids");
 const v = require("../lib/validators");
 const { encryptText, decryptText, signPayload, randomToken } = require("../lib/crypto");
 const { badRequest, notFound } = require("../lib/errors");
+const { isPubliclyRoutable } = require("../lib/safe-url");
 const { isKnownType } = require("./events");
 
 // Growing delay between attempts: about a minute, five, half an hour, two
@@ -48,6 +49,18 @@ async function createEndpoint(merchantId, { url, events = [], livemode = false }
   const clean = v.httpUrl(url, { allowHttp: process.env.NODE_ENV !== "production" });
   if (!clean) {
     throw badRequest("A webhook URL must be a valid https URL.", { url: "Invalid." });
+  }
+
+  // THE ADDRESS HAS TO BE ON THE PUBLIC INTERNET.
+  //
+  // Without this, a merchant registers http://169.254.169.254/ and this
+  // installation fetches the cloud metadata service for them, or points at an
+  // internal host and reads the delivery record's status code as a port
+  // scanner with a dashboard. The webhook feature is the most natural place
+  // for server-side request forgery to appear in a payments project.
+  const routable = await isPubliclyRoutable(clean);
+  if (!routable.ok) {
+    throw badRequest(`That webhook URL cannot be used: ${routable.reason}`, { url: routable.reason });
   }
 
   const list = (Array.isArray(events) ? events : String(events || "").split(","))

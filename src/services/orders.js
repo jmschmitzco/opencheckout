@@ -20,6 +20,7 @@ const ids = require("../lib/ids");
 const v = require("../lib/validators");
 const money = require("../lib/money");
 const { randomUrlToken } = require("../lib/crypto");
+const { scrub } = require("../lib/scrub");
 const { inBackground } = require("../lib/background-tasks");
 const { badRequest, conflict, notFound, gatewayError } = require("../lib/errors");
 const { getGateway } = require("../gateways");
@@ -413,7 +414,7 @@ async function chargeOrder({ merchant, order, customer, card, method, session })
     // order stays pending and the buyer is told to try again. It is NOT marked
     // refused: we do not know that it was.
     await recordCharge(merchant.id, order, { gateway: gateway.name, status: "error", detail: err.message });
-    console.error(`[orders] Charge failed for ${order.public_id}:`, err.message);
+    console.error(`[orders] Charge failed for ${order.public_id}:`, scrub(err.message));
     throw gatewayError("The payment could not be started. Please try again in a moment.");
   }
 
@@ -439,7 +440,7 @@ async function chargeOrder({ merchant, order, customer, card, method, session })
       (charge.boleto && charge.boleto.url) || null,
       (charge.boleto && charge.boleto.barcode) || null,
       (charge.boleto && charge.boleto.dueDate) || null,
-      charge.refusalReason || null,
+      charge.refusalReason ? scrub(String(charge.refusalReason)).slice(0, 300) : null,
       // Where the buyer has to go to finish, for a gateway that takes over.
       (charge.redirect && charge.redirect.url) || null,
       charge.captureId || null,
@@ -520,9 +521,11 @@ async function recordCharge(merchantId, order, { gateway, gatewayChargeId = null
       status,
       order.amount_cents,
       order.currency,
-      // Truncated, and card data never reaches here: the adapter returns a
-      // token and a brand, never a number.
-      detail ? String(detail).slice(0, 2000) : null,
+      // Scrubbed before it is stored. A gateway's error message is text we
+      // did not write, and it lands on this row and in the log. If one of them
+      // ever echoes back what was sent, this is the only thing between that
+      // and a card number in the database.
+      detail ? scrub(String(detail)).slice(0, 2000) : null,
     ]
   );
 }

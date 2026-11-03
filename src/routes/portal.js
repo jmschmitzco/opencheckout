@@ -24,6 +24,29 @@ const router = express.Router();
 
 const limit = rateLimit({ windowMs: 60_000, max: 60, skip: () => isDemo(), standardHeaders: true });
 
+// The portal's two actions are authenticated by a COOKIE, which makes them the
+// only cross-site request forgery surface in the system.
+//
+// SameSite=lax already stops a cross-site POST from carrying the cookie, and
+// that is the real defence. This is the second one, because it costs a
+// function: a request that states an Origin has to state ours. A form posted
+// from another site cannot change that header, and a same-origin fetch always
+// sends it.
+function sameOriginOnly(req, res, next) {
+  const origin = req.get("origin");
+  if (!origin) return next(); // same-origin navigations may omit it entirely
+  let host;
+  try {
+    host = new URL(origin).host;
+  } catch {
+    return res.status(403).json({ error: { message: "Bad origin." } });
+  }
+  if (host !== req.get("host")) {
+    return res.status(403).json({ error: { message: "Cross-site requests are not accepted here." } });
+  }
+  return next();
+}
+
 // The cookie that holds the portal session. httpOnly so no script can read
 // it, sameSite lax so it survives the redirect in from the integrator's app,
 // and secure outside development.
@@ -93,7 +116,7 @@ async function renderPortal(req, res, next) {
 
 router.get("/portal", limit, renderPortal);
 
-router.post("/portal/cancel", limit, async (req, res, next) => {
+router.post("/portal/cancel", limit, sameOriginOnly, async (req, res, next) => {
   try {
     const data = readPortalCookie(req);
     if (!data) return res.status(401).json({ error: { message: "Session expired." } });
@@ -115,7 +138,7 @@ router.post("/portal/cancel", limit, async (req, res, next) => {
   }
 });
 
-router.post("/portal/resume", limit, async (req, res, next) => {
+router.post("/portal/resume", limit, sameOriginOnly, async (req, res, next) => {
   try {
     const data = readPortalCookie(req);
     if (!data) return res.status(401).json({ error: { message: "Session expired." } });
