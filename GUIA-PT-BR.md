@@ -230,35 +230,33 @@ nome no `window` entram no código dos clientes e depois doem para mudar.
 Hoje o projeto está numa pasta dentro do repositório da Mitzshop, o que foi de
 propósito: assim dá para comparar os dois lado a lado enquanto ele cresce.
 
-**O ramo já está pronto.** Eu rodei o comando que separa a pasta:
+**Já está publicado**, em 03/11/2026:
+
+<https://github.com/jmschmitzco/opencheckout>
+
+Público, licença MIT, 8 commits, 95 arquivos. Nenhuma linha da Mitzshop foi
+junto: conferi que não há `.env` rastreado, nenhuma chave de verdade, nenhuma
+referência ao seu domínio nem ao IP da VPS.
+
+O ramo local que gerou isso é o `opencheckout-only`, criado assim:
 
 ```bash
 git subtree split --prefix=opencheckout -b opencheckout-only
 ```
 
-Ele criou o ramo `opencheckout-only`, com 95 arquivos e só os commits que
-tocaram nesta pasta. Nenhuma linha da Mitzshop foi junto, e eu conferi: não há
-`.env` rastreado, nenhuma chave de verdade, nenhuma referência ao seu domínio
-nem ao IP da VPS.
-
-Para publicar, faltam dois comandos. **Eu não consegui rodar nem um nem outro**,
-porque a trava de segurança desta sessão bloqueia criar repositório e enviar
-código para fora da máquina, e eu não devo contornar isso. São seus:
+Para mandar uma mudança nova para lá, depois de commitar aqui, são dois
+comandos de dentro da pasta do worktree:
 
 ```bash
-gh repo create opencheckout --public --description "Open source, white label checkout for SaaS. Self-hosted, your own payment processor account."
+git branch -f opencheckout-only $(git subtree split --prefix=opencheckout)
 ```
 
 ```bash
-git push git@github.com:jmschmitzco/opencheckout.git opencheckout-only:main
+git push https://github.com/jmschmitzco/opencheckout.git opencheckout-only:main
 ```
 
-Os dois rodam de dentro da pasta do worktree
-(`.claude/worktrees/checkout-open-source-saas-7a362a`), não de dentro de
-`opencheckout/`.
-
-Se preferir começar fechado, troque `--public` por `--private` no primeiro
-comando. Dá para abrir depois, em Settings, e o endereço continua o mesmo.
+O primeiro demora um pouco, porque ele varre o histórico inteiro do
+repositório para achar só o que tocou nesta pasta.
 
 Antes de publicar, confira três coisas:
 

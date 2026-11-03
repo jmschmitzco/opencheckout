@@ -153,7 +153,7 @@ if (isDemo()) {
 app.get("/", (_req, res) => {
   res.json({
     service: "opencheckout",
-    docs: "https://github.com/opencheckout/opencheckout",
+    docs: "https://github.com/jmschmitzco/opencheckout",
     api: `${config.baseUrl}/v1`,
     health: `${config.baseUrl}/healthz`,
   });

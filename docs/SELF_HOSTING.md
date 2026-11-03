@@ -11,7 +11,7 @@
 ## Install
 
 ```bash
-git clone https://github.com/opencheckout/opencheckout.git
+git clone https://github.com/jmschmitzco/opencheckout.git
 cd opencheckout
 npm ci --omit=dev
 cp .env.example .env
