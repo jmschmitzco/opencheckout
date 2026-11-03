@@ -1,0 +1,52 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # 18 is the floor the package declares, and 22 is what most people
+        # will actually run it on. Testing both is how the floor stays true.
+        node: [18, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      # No database and no credentials. The suite runs against an in-memory
+      # PostgreSQL and a simulated gateway, so CI needs no services and a fork
+      # can run it without any secret.
+      - run: npm test
+
+      # The demo is the project's first impression, and a first impression
+      # that does not boot is worse than none. This starts it, waits for the
+      # health check and stops it.
+      - name: the demo boots
+        run: |
+          npm run demo &
+          DEMO_PID=$!
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/healthz > /dev/null; then
+              echo "demo is up"
+              curl -fsS http://localhost:3000/demo > /dev/null
+              kill $DEMO_PID
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "the demo did not come up"
+          kill $DEMO_PID || true
+          exit 1
