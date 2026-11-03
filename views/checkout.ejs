@@ -299,6 +299,40 @@
         </p>
       </fieldset>
 
+      <%#
+        THE ORDER BUMP, immediately above the button.
+        It sits here rather than in the summary because this is the last thing
+        read before paying, and because a buyer who has already decided to pay
+        is the only one it is fair to ask.
+      %>
+      <% if (bumps && bumps.length) { %>
+        <div class="oc-bumps">
+          <% bumps.forEach(function (bump) { %>
+            <label class="oc-bump<%= bump.accepted ? " oc-bump--on" : "" %>" data-oc-bump-row>
+              <input class="oc-bump__input" type="checkbox"
+                     data-oc-bump="<%= bump.id %>" <%= bump.accepted ? "checked" : "" %>>
+              <span class="oc-bump__box" aria-hidden="true"></span>
+              <span class="oc-bump__body">
+                <span class="oc-bump__title"><%= bump.title %></span>
+                <% if (bump.description) { %>
+                  <span class="oc-bump__text"><%= bump.description %></span>
+                <% } %>
+                <span class="oc-bump__price">
+                  <% if (bump.compare_at_formatted) { %>
+                    <s><%= bump.compare_at_formatted %></s>
+                  <% } %>
+                  <strong>+ <%= bump.amount_formatted %></strong>
+                </span>
+              </span>
+              <% if (bump.image_url) { %>
+                <img class="oc-bump__image" src="<%= bump.image_url %>" alt="" width="56" height="56">
+              <% } %>
+            </label>
+          <% }); %>
+          <p class="oc-field__error" data-oc-bump-error role="status" aria-live="polite"></p>
+        </div>
+      <% } %>
+
       <p class="oc-form__error" data-oc-form-error role="alert" aria-live="assertive"></p>
 
       <button class="oc-submit" type="submit" data-oc-submit>

@@ -1009,3 +1009,198 @@ body {
   cursor: pointer;
   color: var(--oc-text-muted);
 }
+
+/* ---------------------------------------------------------------------------
+   Order bump
+
+   A dashed box above the pay button, which is where it converts. It reads as
+   an offer rather than as part of the form, so nobody ticks it by accident,
+   and the ticked state is unmistakable: an accidental purchase is a refund.
+   --------------------------------------------------------------------------- */
+
+.oc-bumps {
+  display: grid;
+  gap: 10px;
+}
+
+.oc-bump {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px dashed var(--oc-border);
+  border-radius: var(--oc-radius-control);
+  background: var(--oc-surface);
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.oc-bump:hover {
+  border-color: var(--oc-accent-ring);
+}
+
+.oc-bump--on {
+  border-style: solid;
+  border-color: var(--oc-accent);
+  background: var(--oc-accent-soft);
+}
+
+.oc-bump__input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.oc-bump__box {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border: 1px solid var(--oc-border);
+  border-radius: 5px;
+  background: var(--oc-surface);
+  position: relative;
+}
+
+.oc-bump--on .oc-bump__box {
+  border-color: var(--oc-accent);
+  background: var(--oc-accent);
+}
+
+.oc-bump--on .oc-bump__box::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 5px;
+  height: 10px;
+  border: solid var(--oc-accent-text);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* The focus ring goes on the visible box, because the real checkbox is
+   hidden. Without it the bump is unreachable by keyboard. */
+.oc-bump__input:focus-visible + .oc-bump__box {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--oc-accent-ring);
+}
+
+.oc-bump__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.oc-bump__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.oc-bump__text {
+  font-size: 13px;
+  color: var(--oc-text-muted);
+}
+
+.oc-bump__price {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.oc-bump__price s {
+  color: var(--oc-text-muted);
+  margin-right: 6px;
+}
+
+.oc-bump__image {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  border: 1px solid var(--oc-border);
+  object-fit: cover;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oc-bump {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The one click offer page
+   --------------------------------------------------------------------------- */
+
+/* The confirmation comes FIRST. A buyer who is unsure whether their payment
+   went through will not press another button, so the page says it did before
+   it asks for anything. */
+.oc-paid-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 20px;
+  padding: 11px 14px;
+  border-radius: var(--oc-radius-control);
+  background: color-mix(in srgb, var(--oc-success) 12%, transparent);
+  color: var(--oc-success);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.oc-paid-banner__tick {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--oc-success);
+  position: relative;
+}
+
+.oc-paid-banner__tick::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.oc-offer__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-bottom: 18px;
+  border-radius: var(--oc-radius-control);
+  border: 1px solid var(--oc-border);
+  object-fit: cover;
+}
+
+.oc-offer__price {
+  margin: 0 0 20px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.oc-offer__price strong {
+  font-size: 26px;
+  letter-spacing: -0.01em;
+}
+
+.oc-offer__compare {
+  display: block;
+  color: var(--oc-text-muted);
+  font-size: 14px;
+}
+
+/* The decline is a REAL control with real contrast, not grey text under the
+   fold. A funnel that traps people generates chargebacks, and a chargeback
+   costs more than the upsell earned. */
+.oc-cancel .oc-button--ghost {
+  width: 100%;
+  margin-top: 4px;
+}

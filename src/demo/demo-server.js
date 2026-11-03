@@ -73,6 +73,58 @@ async function main() {
       },
     });
 
+    // The funnel: a bump inside the checkout, and the one click offer pair
+    // after it. All three hang off the main product.
+    const offers = require("../services/offers");
+
+    const bumpProduct = await catalog.createProduct(seed.merchant.id, {
+      name: "Pacote de modelos prontos",
+    });
+    const bumpPrice = await catalog.createPrice(seed.merchant.id, bumpProduct.public_id, {
+      currency: "BRL",
+      unitAmountCents: 2900,
+      compareAtCents: 5900,
+    });
+    await offers.create(seed.merchant.id, {
+      kind: "bump",
+      trigger_product: seed.product.public_id,
+      price: bumpPrice.public_id,
+      title: "Adicione o pacote de modelos",
+      description: "Doze modelos prontos para você começar hoje, em vez de do zero.",
+    });
+
+    const upsellProduct = await catalog.createProduct(seed.merchant.id, {
+      name: "Um ano de atualizações",
+    });
+    const upsellPrice = await catalog.createPrice(seed.merchant.id, upsellProduct.public_id, {
+      currency: "BRL",
+      unitAmountCents: 9700,
+      compareAtCents: 19700,
+    });
+    await offers.create(seed.merchant.id, {
+      kind: "upsell",
+      trigger_product: seed.product.public_id,
+      price: upsellPrice.public_id,
+      title: "Mantenha tudo atualizado por um ano",
+      description: "Toda melhoria que sair no próximo ano chega para você sem pagar de novo.",
+    });
+
+    const downsellProduct = await catalog.createProduct(seed.merchant.id, {
+      name: "Seis meses de atualizações",
+    });
+    const downsellPrice = await catalog.createPrice(seed.merchant.id, downsellProduct.public_id, {
+      currency: "BRL",
+      unitAmountCents: 4700,
+      compareAtCents: 9700,
+    });
+    await offers.create(seed.merchant.id, {
+      kind: "downsell",
+      trigger_product: seed.product.public_id,
+      price: downsellPrice.public_id,
+      title: "Que tal seis meses, então?",
+      description: "Metade do prazo, menos da metade do preço.",
+    });
+
     return { product, price };
   });
 

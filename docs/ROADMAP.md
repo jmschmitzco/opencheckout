@@ -16,6 +16,10 @@ different answers and an integrator deserves to know which one they got.
   period end, resume
 - Entitlements, answering from subscriptions and one-off purchases
 - Customer portal with short-lived single-use links
+- Order bump: a tick box inside the checkout, charged with the same
+  authorization, and deliberately not discounted by the cart's coupon
+- Upsell and downsell: one click after payment against the saved credential,
+  refresh safe, and absent entirely where the gateway cannot charge again
 - Coupons: percentage or fixed, redemption limits, once per customer
 - Abandoned carts as events carrying a recovery link
 - Outbound webhooks: HMAC signed, retried with backoff, auto-disabled after
@@ -44,25 +48,14 @@ for the person who actually owns the business. Needed: paste gateway
 credentials, pick a theme, see orders and subscriptions, create coupons,
 manage webhook endpoints and read delivery failures.
 
-### 3. Order bump and post-purchase upsell
-
-The `offers` table is in the schema and nothing reads it yet. Needed: the
-checkbox inside the checkout that adds a bump to the order before it is
-charged, and the one-click page after payment that charges an upsell against
-the card token the first sale already produced.
-
-The token side is already built, because subscription renewals use the same
-`chargeWithToken` path. What is missing is the offer selection, the two routes
-and the funnel state on the order.
-
-### 4. Refunds and disputes
+### 3. Refunds and disputes
 
 `POST /v1/orders/:id/refund`, partial and full, plus handling the dispute
 notifications the gateways send. The order statuses and the transition table
 already cover `refunded` and `chargeback`; what is missing is the route and
 the adapter calls behind it.
 
-### 5. Usage-based billing
+### 4. Usage-based billing
 
 Report usage against a subscription, bill it at period end. The pieces exist
 (ad hoc line items, the renewal loop); what is missing is a meter and the

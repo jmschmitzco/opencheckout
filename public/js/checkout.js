@@ -343,6 +343,64 @@
   }
 
   // ---------------------------------------------------------------------
+  // Order bump
+  //
+  // Sends WHICH offer and whether it is ticked, and takes the new total from
+  // the answer. The page never adds the price itself: a page that can do the
+  // arithmetic is a page that can be edited to do it differently.
+  // ---------------------------------------------------------------------
+
+  function applyTotals(data, select) {
+    $$("[data-oc-total]").forEach(function (el) {
+      el.textContent = data.total_formatted;
+    });
+    if (!select || !data.installment_options) return;
+
+    var chosen = select.value;
+    select.innerHTML = "";
+    data.installment_options.forEach(function (option) {
+      var el = document.createElement("option");
+      el.value = option.count;
+      el.textContent =
+        option.count + "× " + option.label + (option.count === 1 ? " " + t("in full", "à vista") : "");
+      select.appendChild(el);
+    });
+    // Keep the buyer's choice when it is still possible: a different total can
+    // change how many instalments are allowed.
+    if (select.querySelector('option[value="' + chosen + '"]')) select.value = chosen;
+  }
+
+  $$("[data-oc-bump]").forEach(function (input) {
+    input.addEventListener("change", function () {
+      var row = input.closest("[data-oc-bump-row]");
+      var slot = $("[data-oc-bump-error]");
+      var wanted = input.checked;
+      input.disabled = true;
+      setText(slot, "");
+
+      post("/c/" + config.sessionId + "/bump", {
+        offer: input.getAttribute("data-oc-bump"),
+        accepted: wanted,
+      })
+        .then(function (data) {
+          if (row) row.classList.toggle("oc-bump--on", wanted);
+          applyTotals(data, $("#oc-installments"));
+        })
+        .catch(function (error) {
+          // Put the tick back where the server thinks it is, so the box and
+          // the total never tell the buyer different stories.
+          input.checked = !wanted;
+          if (row) row.classList.toggle("oc-bump--on", !wanted);
+          setText(slot, error.message);
+        })
+        .finally(function () {
+          input.disabled = false;
+          reportHeight();
+        });
+    });
+  });
+
+  // ---------------------------------------------------------------------
   // Submitting
   // ---------------------------------------------------------------------
 

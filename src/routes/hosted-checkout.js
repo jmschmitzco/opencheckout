@@ -95,6 +95,14 @@ async function buildPageModel(req) {
     .filter(Boolean)
     .filter((method) => configured.includes(method));
 
+  // The bumps this checkout offers, already priced and formatted. Resolved
+  // here rather than in the template so the page has no arithmetic in it.
+  const offers = require("../services/offers");
+  const bumpRows = theme.show_order_summary
+    ? await offers.bumpsForSession(merchant.id, session, items)
+    : [];
+  const acceptedBumps = sessions.parseAcceptedBumps(session);
+
   const locale = session.locale;
   const maxInstallments = methods.includes("card")
     ? money.maxInstallmentsFor(session.total_cents, orders.maxInstallmentsForItems(items, session.currency))
@@ -109,6 +117,10 @@ async function buildPageModel(req) {
     themeStyle: branding.themeStyleAttribute(theme),
     webfontHref: branding.webfontHref(theme),
     items,
+    bumps: bumpRows.map((row) => ({
+      ...offers.toView(row, { locale: session.locale }),
+      accepted: acceptedBumps.includes(row.public_id),
+    })),
     methods,
     buyerFields: String(session.buyer_fields || "").split(",").filter(Boolean),
     locale,
@@ -280,6 +292,16 @@ router.post(
       // to send the buyer to. Both cannot be set at once.
       if (body.redirect_url) body.next_url = null;
 
+      // A paid order with a funnel behind it goes to the one click offer
+      // instead of straight to the merchant's success page. Resolved on the
+      // server, because the page must not get to choose where the money goes
+      // next.
+      if (orders.TERMINAL_PAID.includes(order.status)) {
+        const funnel = require("./funnel");
+        const step = await funnel.nextStepUrl(req.merchantId, req.merchant, order);
+        if (!step.done) body.next_url = step.url;
+      }
+
       if (req.idempotency) await req.idempotency.complete(201, body, order.id);
       res.status(201).json(body);
     } catch (err) {
@@ -311,11 +333,21 @@ router.get("/c/:id/status", statusLimit, loadSession, async (req, res, next) => 
     }
     const fresh = await orders.findById(req.merchantId, order.id);
 
+    let nextUrl = orders.TERMINAL_PAID.includes(fresh.status)
+      ? withOrderParams(req.session_.success_url, fresh)
+      : null;
+
+    // A Pix confirmed two minutes later deserves the same funnel a card got
+    // instantly. Without this, the offer only ever reached card buyers.
+    if (nextUrl) {
+      const funnel = require("./funnel");
+      const step = await funnel.nextStepUrl(req.merchantId, req.merchant, fresh);
+      if (!step.done) nextUrl = step.url;
+    }
+
     res.json({
       ...orders.toStatusView(fresh, { locale: req.session_.locale }),
-      next_url: orders.TERMINAL_PAID.includes(fresh.status)
-        ? withOrderParams(req.session_.success_url, fresh)
-        : null,
+      next_url: nextUrl,
     });
   } catch (err) {
     next(err);
@@ -357,6 +389,54 @@ router.post("/c/:id/coupon", couponLimit, loadSession, async (req, res, next) =>
             count: n,
             label: money.formatMoney(
               money.installmentAmount(session.total_cents, n),
+              session.currency,
+              locale
+            ),
+          };
+        }
+      ),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Order bump
+//
+// The page sends WHICH offer and whether it is ticked. It never sends a price:
+// the amount comes from the offer's own row, and the new total comes back from
+// the server, the same way a coupon works.
+// ---------------------------------------------------------------------------
+
+router.post("/c/:id/bump", couponLimit, loadSession, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const { session } = await sessions.toggleBump(
+      req.merchantId,
+      req.session_,
+      String(body.offer || ""),
+      Boolean(body.accepted)
+    );
+    const locale = session.locale;
+
+    res.json({
+      accepted_bumps: sessions.parseAcceptedBumps(session),
+      subtotal_cents: session.subtotal_cents,
+      discount_cents: session.discount_cents,
+      bump_cents: session.bump_cents,
+      total_cents: session.total_cents,
+      bump_formatted: money.formatMoney(session.bump_cents, session.currency, locale),
+      total_formatted: money.formatMoney(session.total_cents, session.currency, locale),
+      // The instalment options move with the total, so they come back with it.
+      installment_options: Array.from(
+        { length: money.maxInstallmentsFor(session.total_cents, 12) },
+        (_unused, index) => {
+          const count = index + 1;
+          return {
+            count,
+            label: money.formatMoney(
+              money.installmentAmount(session.total_cents, count),
               session.currency,
               locale
             ),

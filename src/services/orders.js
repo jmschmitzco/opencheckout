@@ -209,6 +209,9 @@ async function chargeClaimedSession({ merchant, session, input, remoteIp, userAg
   const customer = await customers.upsert(merchantId, buyer);
 
   const items = sessions.parseLineItems(session);
+  // Priced from the offer rows, not from the session's stored figure, so the
+  // charge and the page can never disagree about what a bump costs.
+  const bumps = await sessions.acceptedBumpRows(merchantId, session);
   const total = Math.max(0, Number(session.total_cents) || 0);
   if (total <= 0) {
     // A free checkout is a real need, and it is NOT this code path: there is
@@ -269,6 +272,19 @@ async function chargeClaimedSession({ merchant, session, input, remoteIp, userAg
           item.unit_amount_cents,
           item.amount_cents,
         ]
+      );
+    }
+
+    // A bump is a line on the SAME order, marked as what it is. The receipt
+    // then shows what the buyer actually agreed to, and the merchant's report
+    // can tell a bump apart from the thing that sold it.
+    for (const bump of bumps) {
+      await client.query(
+        `insert into order_items
+           (merchant_id, order_id, kind, product_id, price_id, description,
+            quantity, unit_amount_cents, amount_cents)
+         values ($1, $2, 'bump', $3, $4, $5, 1, $6, $6)`,
+        [merchantId, row.id, bump.product_id, bump.offer_price_id, bump.title, bump.unit_amount_cents]
       );
     }
     return row;
@@ -592,6 +608,200 @@ async function markStatus(merchantId, orderId, newStatus, source = "unknown") {
   return { changed: true, order: updated };
 }
 
+// THE ONE CLICK CHARGE, for an upsell or a downsell.
+//
+// It is a SEPARATE order against the credential the first sale produced, not
+// an edit of the first charge. The first one is already authorized and may
+// already be settled, and no gateway offers "charge that again for a different
+// amount".
+//
+// Two things make it safe to call from a page somebody can refresh:
+//   1. An offer already answered on this funnel is refused, which is why a
+//      decline is recorded as a row rather than forgotten.
+//   2. The child order is created before the charge, so a crash in between
+//      leaves a row that the stranded-order sweep closes.
+async function acceptOffer({ merchant, parentOrder, offer, remoteIp = null }) {
+  const merchantId = merchant.id;
+  const offers = require("./offers");
+
+  if (!orderCanFunnel(parentOrder)) {
+    throw conflict("This order cannot take a one click charge.");
+  }
+
+  const rootId = parentOrder.parent_order_id || parentOrder.id;
+  const existing = await offers.alreadyTaken(merchantId, rootId, offer.id);
+  if (existing) {
+    // Not an error: a refreshed page, or a double tap. The answer is the order
+    // that already exists.
+    return findById(merchantId, existing.id);
+  }
+
+  const customer = await customers.findById(merchantId, parentOrder.customer_id);
+  if (!customer) throw conflict("The customer record for this order is gone.");
+
+  const child = await db.transaction(async (client) => {
+    const inserted = await client.query(
+      `insert into orders
+         (merchant_id, public_id, livemode, customer_id, kind, parent_order_id, offer_id,
+          status, payment_method, installments, currency, amount_cents,
+          gateway, card_token, checkout_token, external_reference, metadata, remote_ip)
+       values ($1, $2, $3, $4, $5, $6, $7, 'pending', 'card', 1, $8, $9, $10, $11, $12, $13, $14, $15)
+       returning *`,
+      [
+        merchantId,
+        ids.publicId("order"),
+        parentOrder.livemode,
+        parentOrder.customer_id,
+        offer.kind,
+        rootId,
+        offer.id,
+        offer.currency,
+        offer.unit_amount_cents,
+        parentOrder.gateway,
+        parentOrder.card_token,
+        randomUrlToken(24),
+        parentOrder.external_reference,
+        parentOrder.metadata,
+        remoteIp,
+      ]
+    );
+    const row = inserted.rows[0];
+
+    await client.query(
+      `insert into order_items
+         (merchant_id, order_id, kind, product_id, price_id, description,
+          quantity, unit_amount_cents, amount_cents)
+       values ($1, $2, $3, $4, $5, $6, 1, $7, $7)`,
+      [
+        merchantId,
+        row.id,
+        offer.kind,
+        offer.product_id,
+        offer.offer_price_id,
+        offer.title,
+        offer.unit_amount_cents,
+      ]
+    );
+    return row;
+  });
+
+  let charge;
+  try {
+    const gateway = await getGateway({
+      merchantId,
+      gateway: parentOrder.gateway,
+      livemode: parentOrder.livemode,
+      currency: offer.currency,
+    });
+    const { customerId } = await gateway.ensureCustomer(customer);
+    charge = await gateway.chargeWithToken({
+      order: {
+        id: child.id,
+        publicId: child.public_id,
+        amountCents: child.amount_cents,
+        currency: child.currency,
+        description: offer.title,
+        installments: 1,
+        method: "card",
+        remoteIp,
+      },
+      customer,
+      customerId,
+      cardToken: parentOrder.card_token,
+    });
+  } catch (err) {
+    console.error(`[orders] One click charge failed for ${child.public_id}:`, scrub(err.message));
+    await recordCharge(merchantId, child, {
+      gateway: parentOrder.gateway,
+      status: "error",
+      detail: err.message,
+    });
+    // Closed rather than left pending: nothing is coming for a charge that
+    // never reached the gateway, and a pending row would show the merchant a
+    // sale that looks like it is still on its way.
+    await db.query(
+      `update orders set status = 'canceled', refusal_reason = $3, updated_at = now()
+        where merchant_id = $1 and id = $2 and status = 'pending'`,
+      [merchantId, child.id, "The payment could not be started."]
+    );
+    throw gatewayError("The payment could not be completed. Nothing extra was charged.");
+  }
+
+  await db.query(
+    `update orders
+        set gateway_charge_id = $3, refusal_reason = $4, card_brand = $5, card_last4 = $6,
+            updated_at = now()
+      where merchant_id = $1 and id = $2`,
+    [
+      merchantId,
+      child.id,
+      charge.gatewayChargeId || null,
+      charge.refusalReason ? scrub(String(charge.refusalReason)).slice(0, 300) : null,
+      parentOrder.card_brand || null,
+      parentOrder.card_last4 || null,
+    ]
+  );
+  await recordCharge(merchantId, child, {
+    gateway: parentOrder.gateway,
+    gatewayChargeId: charge.gatewayChargeId,
+    status: charge.status,
+  });
+
+  if (charge.status === "paid") {
+    await markStatus(merchantId, child.id, "paid", "funnel:one-click");
+  } else if (charge.status === "refused") {
+    await markStatus(merchantId, child.id, "refused", "funnel:one-click");
+  } else {
+    await emitOrderEvent(merchantId, await findById(merchantId, child.id), "order.created");
+  }
+
+  return findById(merchantId, child.id);
+}
+
+// Records that an offer was declined, so it is not offered again on a refresh.
+//
+// Nothing is charged, so there is no money here. The decline lives as a zero
+// amount canceled row, which makes "already answered" one question with one
+// answer instead of two.
+async function declineOffer({ merchant, parentOrder, offer }) {
+  const merchantId = merchant.id;
+  const rootId = parentOrder.parent_order_id || parentOrder.id;
+
+  const existing = await require("./offers").alreadyTaken(merchantId, rootId, offer.id);
+  if (existing) return findById(merchantId, existing.id);
+
+  const result = await db.query(
+    `insert into orders
+       (merchant_id, public_id, livemode, customer_id, kind, parent_order_id, offer_id,
+        status, currency, amount_cents, checkout_token, refusal_reason)
+     values ($1, $2, $3, $4, $5, $6, $7, 'canceled', $8, 0, $9, 'Declined by the buyer.')
+     returning *`,
+    [
+      merchantId,
+      ids.publicId("order"),
+      parentOrder.livemode,
+      parentOrder.customer_id,
+      offer.kind,
+      rootId,
+      offer.id,
+      offer.currency,
+      randomUrlToken(24),
+    ]
+  );
+  return result.rows[0];
+}
+
+// Can this order carry a one click charge? It needs a saved credential and a
+// gateway that will honour it.
+function orderCanFunnel(order) {
+  if (!order || !order.card_token || !order.gateway) return false;
+  if (!TERMINAL_PAID.includes(order.status)) return false;
+  const { isDemo } = require("../config");
+  if (isDemo()) return true;
+  const { capabilitiesOf } = require("../gateways");
+  return capabilitiesOf(order.gateway).supportsRecurring;
+}
+
 // Starts the subscription behind a paid subscription-mode order, if there is
 // one. Never throws: the sale already succeeded, and a bookkeeping failure
 // here must not look like a failed payment.
@@ -838,6 +1048,9 @@ module.exports = {
   validateCard,
   maxInstallmentsForItems,
   markStatus,
+  acceptOffer,
+  declineOffer,
+  orderCanFunnel,
   maybeStartSubscription,
   reconcile,
   toEventPayload,

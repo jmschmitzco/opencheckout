@@ -1,0 +1,81 @@
+<%- include("partials/head", { title: offer.title, theme, themeStyle, webfontHref, locale }) %>
+
+<% const pt = String(locale).toLowerCase().startsWith("pt"); %>
+<% const t = (en, br) => (pt ? br : en); %>
+
+<%#
+  The one click offer, after a payment that already succeeded.
+
+  Two things this page must never do, and both are about trust at the moment
+  somebody has just handed over a card:
+
+  1. Hide that the first purchase is DONE. It says so first, before it asks
+     for anything, because a buyer who is unsure whether they paid will not
+     press another button.
+  2. Make "no" hard to find. The decline is a real control with real contrast,
+     not grey text under the fold. A funnel that traps people generates
+     chargebacks, and a chargeback costs more than the upsell earned.
+%>
+
+<main class="oc-page oc-page--single">
+  <section class="oc-panel">
+    <%- include("partials/brand", { theme, merchant }) %>
+
+    <p class="oc-paid-banner">
+      <span class="oc-paid-banner__tick" aria-hidden="true"></span>
+      <%= t("Your payment is confirmed.", "Seu pagamento está confirmado.") %>
+    </p>
+
+    <header class="oc-panel__head">
+      <h1 class="oc-headline"><%= offer.title %></h1>
+      <% if (offer.description) { %>
+        <p class="oc-subheadline"><%= offer.description %></p>
+      <% } %>
+    </header>
+
+    <% if (offer.image_url) { %>
+      <img class="oc-offer__image" src="<%= offer.image_url %>" alt="" width="520" height="280">
+    <% } %>
+
+    <p class="oc-offer__price">
+      <% if (offer.compare_at_formatted) { %>
+        <s class="oc-offer__compare"><%= offer.compare_at_formatted %></s>
+      <% } %>
+      <strong><%= offer.amount_formatted %></strong>
+    </p>
+
+    <p class="oc-form__error" data-oc-funnel-error role="alert" aria-live="assertive"></p>
+
+    <button class="oc-submit" type="button" data-oc-accept>
+      <span class="oc-submit__label">
+        <%= t("Add it to my order", "Adicionar ao meu pedido") %>
+      </span>
+      <span class="oc-submit__amount"><%= offer.amount_formatted %></span>
+      <span class="oc-spinner" aria-hidden="true"></span>
+    </button>
+
+    <%#
+      The card is named, not just implied. "One click" is only fair if the
+      buyer can see which card the click will charge.
+    %>
+    <% if (card.last4) { %>
+      <p class="oc-secure">
+        <%= t("Charged to the card ending", "No cartão com final") %>
+        <%= card.last4 %><%= card.brand ? " (" + card.brand + ")" : "" %>
+      </p>
+    <% } %>
+
+    <p class="oc-cancel">
+      <button class="oc-button oc-button--ghost" type="button" data-oc-decline>
+        <%= t("No thanks, continue", "Não, obrigado, continuar") %>
+      </button>
+    </p>
+
+    <%- include("partials/footer", { theme, merchant, copy }) %>
+  </section>
+</main>
+
+<script type="application/json" id="oc-funnel-config"><%- JSON.stringify(publicConfig) %></script>
+<script src="/static/js/funnel.js" defer></script>
+</body>
+</html>

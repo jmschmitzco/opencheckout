@@ -319,6 +319,80 @@ async function create(merchantId, input = {}, { livemode = false } = {}) {
   return result.rows[0];
 }
 
+// THE ONE PLACE THAT KNOWS HOW A TOTAL IS BUILT.
+//
+//   total = (subtotal - discount) + bumps
+//
+// The bumps are added AFTER the discount on purpose. A coupon is for the thing
+// being sold; a bump is an add-on the buyer chose after seeing the price, and
+// halving it with a "50% off" code was never what the merchant meant by that
+// code. Putting the rule here, once, is what stops the coupon route and the
+// bump route drifting into two different answers.
+function totalFor({ subtotal_cents, discount_cents, bump_cents }) {
+  const subtotal = Math.max(0, Math.trunc(Number(subtotal_cents) || 0));
+  const discount = Math.max(0, Math.trunc(Number(discount_cents) || 0));
+  const bumps = Math.max(0, Math.trunc(Number(bump_cents) || 0));
+  return Math.max(0, subtotal - discount) + bumps;
+}
+
+function parseAcceptedBumps(session) {
+  try {
+    const parsed = JSON.parse((session && session.accepted_bumps) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+// Ticks or unticks a bump and rewrites the totals.
+//
+// The AMOUNT comes from the offer's price row, never from the request. The
+// page sends which offer, and nothing else: a payload that carries its own
+// price is a payload that sets its own price.
+async function toggleBump(merchantId, session, offerPublicId, accepted) {
+  if (effectiveStatus(session) !== "open") throw conflict("This checkout is no longer open.");
+
+  const offers = require("./offers");
+  const items = parseLineItems(session);
+  const available = await offers.bumpsForSession(merchantId, session, items);
+  const offer = available.find((row) => row.public_id === offerPublicId);
+  if (!offer) throw badRequest("That offer is not available on this checkout.");
+
+  const current = new Set(parseAcceptedBumps(session));
+  if (accepted) current.add(offer.public_id);
+  else current.delete(offer.public_id);
+
+  // Re-priced from the rows, not adjusted by a delta. An accumulated delta
+  // drifts the moment anything else touches the session.
+  const chosen = available.filter((row) => current.has(row.public_id));
+  const bumpCents = chosen.reduce((sum, row) => sum + row.unit_amount_cents, 0);
+
+  const result = await db.query(
+    `update checkout_sessions
+        set accepted_bumps = $3, bump_cents = $4, total_cents = $5
+      where merchant_id = $1 and id = $2
+      returning *`,
+    [
+      merchantId,
+      session.id,
+      JSON.stringify(chosen.map((row) => row.public_id)),
+      bumpCents,
+      totalFor({ ...session, bump_cents: bumpCents }),
+    ]
+  );
+  return { session: result.rows[0], accepted: chosen };
+}
+
+// The bump rows a session has accepted, priced from the catalogue. Used when
+// the order is created, so the charge carries the same amounts the page showed.
+async function acceptedBumpRows(merchantId, session) {
+  const chosen = parseAcceptedBumps(session);
+  if (!chosen.length) return [];
+  const items = parseLineItems(session);
+  const available = await require("./offers").bumpsForSession(merchantId, session, items);
+  return available.filter((row) => chosen.includes(row.public_id));
+}
+
 // Which payment methods the page offers.
 //
 // Filtered by what is actually possible, not just by what was asked for: Pix
@@ -515,10 +589,12 @@ async function applyCoupon(merchantId, session, code, email) {
   if (!code) {
     const result = await db.query(
       `update checkout_sessions
-          set coupon_code = null, discount_cents = 0, total_cents = subtotal_cents
+          set coupon_code = null, discount_cents = 0, total_cents = $3
         where merchant_id = $1 and id = $2
         returning *`,
-      [merchantId, session.id]
+      // Not `subtotal_cents`: that would silently drop any bump the buyer had
+      // already ticked, and the first sign of it would be the charge.
+      [merchantId, session.id, totalFor({ ...session, discount_cents: 0 })]
     );
     return { ok: true, session: result.rows[0], reason: null };
   }
@@ -542,7 +618,7 @@ async function applyCoupon(merchantId, session, code, email) {
       session.id,
       applied.coupon.code,
       applied.discountCents,
-      Math.max(0, session.subtotal_cents - applied.discountCents),
+      totalFor({ ...session, discount_cents: applied.discountCents }),
     ]
   );
   return { ok: true, session: result.rows[0], reason: null };
@@ -570,8 +646,10 @@ function toApi(session, { includeSecret = false } = {}) {
     currency: session.currency,
     subtotal_cents: session.subtotal_cents,
     discount_cents: session.discount_cents,
+    bump_cents: session.bump_cents,
     total_cents: session.total_cents,
     coupon: session.coupon_code,
+    accepted_bumps: parseAcceptedBumps(session),
     line_items: parseLineItems(session).map((item) => ({
       price: item.price,
       product: item.product,
@@ -611,6 +689,10 @@ module.exports = {
   findForPage,
   parseLineItems,
   parseBrandingOverride,
+  parseAcceptedBumps,
+  acceptedBumpRows,
+  toggleBump,
+  totalFor,
   isExpired,
   effectiveStatus,
   expire,

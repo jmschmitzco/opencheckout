@@ -225,6 +225,8 @@ trade.
 | Subscriptions | Trials, renewals, dunning with retries, cancel at period end |
 | Entitlements | One call that answers "may this user in?" |
 | Customer portal | Short-lived single-use link, no password to store |
+| Order bump | A tick box in the checkout that joins the same charge |
+| Upsell and downsell | One click after payment, against the saved card |
 | Coupons | Percentage or fixed, limits, once per customer |
 | Abandoned carts | A `cart.abandoned` event with a working recovery link |
 | White label | Three theme layers, per-session override |
@@ -298,7 +300,7 @@ Every one of these is here because the alternative loses money or leaks data.
 npm test
 ```
 
-293 tests against the real schema, in an in-memory PostgreSQL, with a simulated
+315 tests against the real schema, in an in-memory PostgreSQL, with a simulated
 gateway. No network, no credentials, and the exit code is meaningful.
 
 That includes the regression tests from three adversarial audits of this

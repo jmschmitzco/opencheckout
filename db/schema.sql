@@ -239,6 +239,15 @@ create table if not exists checkout_sessions (
   total_cents        integer not null default 0,
   coupon_code        text,
   allow_coupon       boolean not null default true,
+  -- Order bumps the buyer ticked, as a JSON array of offer public ids.
+  --
+  -- They are priced separately from the line items, and added AFTER the
+  -- discount, which is a deliberate choice rather than an accident of the
+  -- arithmetic: a coupon is for the thing being sold, and a bump is an add-on
+  -- the buyer chose after seeing the price. Halving it with a "50% off" code
+  -- was never what the merchant meant by that code.
+  accepted_bumps     text not null default '[]',
+  bump_cents         integer not null default 0,
   payment_methods    text not null default 'pix,card,boleto',
   buyer_fields       text not null default 'name,document,phone',
   branding_override  text,
@@ -279,6 +288,10 @@ create table if not exists orders (
   customer_id        integer references customers(id),
   kind               text not null default 'main',     -- main | upsell | downsell
   parent_order_id    integer,
+  -- The offer this order came from, when it is an upsell or a downsell. It is
+  -- what makes "has this offer already been taken?" answerable, which is what
+  -- stops a refreshed one-click page from charging twice.
+  offer_id           integer,
   status             text not null default 'pending',  -- pending | paid | refused | refunded | chargeback | expired | canceled
   payment_method     text,                        -- pix | card | boleto | paypal
   installments       integer not null default 1,
@@ -318,6 +331,7 @@ create table if not exists orders (
 create index if not exists orders_merchant_idx on orders (merchant_id, status, created_at desc);
 create index if not exists orders_charge_idx on orders (gateway, gateway_charge_id);
 create index if not exists orders_customer_idx on orders (merchant_id, customer_id);
+create index if not exists orders_funnel_idx on orders (merchant_id, parent_order_id, offer_id);
 
 create table if not exists order_items (
   id                serial primary key,

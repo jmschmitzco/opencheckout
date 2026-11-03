@@ -139,6 +139,7 @@ app.use("/v1", require("./routes/api-v1"));
 app.use("/gateway-webhooks", require("./routes/gateway-webhooks").router);
 app.use("/", require("./routes/embed"));
 app.use("/", require("./routes/payment-return").router);
+app.use("/", require("./routes/funnel").router);
 app.use("/", require("./routes/hosted-checkout").router);
 app.use("/", require("./routes/portal"));
 

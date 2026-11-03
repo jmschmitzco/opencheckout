@@ -110,7 +110,9 @@ consulta nossa ao gateway**. O navegador pode mentir.
 - Vários clientes no mesmo servidor, sem um enxergar o outro
 - **Os quatro gateways de verdade**: Asaas, Pagar.me, Mercado Pago e PayPal,
   portados do que já roda em produção na Mitzshop
-- 293 testes passando, incluindo os de três auditorias que eu mesmo fiz
+- **Order bump** dentro do checkout e **upsell/downsell de um clique** depois
+  do pagamento, cobrando no cartão que a primeira venda guardou
+- 315 testes passando, incluindo os de três auditorias que eu mesmo fiz
   (`docs/AUDITS.md` conta o que estava errado e por que importava)
 
 ### O que ainda falta
@@ -118,18 +120,13 @@ consulta nossa ao gateway**. O navegador pode mentir.
 Está tudo anotado em `docs/ROADMAP.md`. Os quatro principais, em ordem de
 importância:
 
-1. **Order bump e upsell pós-compra.** Você pediu na primeira versão e eu não
-   entreguei. A tabela `offers` está no banco, mas ainda não existe a caixinha
-   dentro do checkout nem a tela de um clique depois do pagamento. A metade
-   difícil já está feita, porque cobrar com o cartão salvo é o mesmo caminho
-   que a renovação de assinatura usa.
-2. **O painel da empresa cliente.** Hoje tudo é por API. Falta a tela onde ela
+1. **O painel da empresa cliente.** Hoje tudo é por API. Falta a tela onde ela
    cola a chave do gateway, escolhe as cores e vê as vendas.
-3. **Cartão pelo Mercado Pago.** O adaptador já sabe cobrar, mas o Mercado Pago
+2. **Cartão pelo Mercado Pago.** O adaptador já sabe cobrar, mas o Mercado Pago
    exige que o cartão vire token no NAVEGADOR, com a chave pública deles. Até a
    página fazer isso, o cartão não é oferecido por esse gateway, de propósito:
    melhor não oferecer do que oferecer e falhar no fim do preenchimento.
-4. **Troca de plano com cobrança proporcional.** Decidi não fazer pela metade:
+3. **Troca de plano com cobrança proporcional.** Decidi não fazer pela metade:
    calcular errado a diferença de um plano para outro vira pedido de
    reembolso. Hoje trocar de plano encerra uma assinatura e começa outra.
 

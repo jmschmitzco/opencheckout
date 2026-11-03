@@ -469,6 +469,42 @@ router.delete("/prices/:id", secretKeyOnly, async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// Offers: order bumps, upsells and downsells
+// ---------------------------------------------------------------------------
+
+router.get("/offers", secretKeyOnly, async (req, res, next) => {
+  try {
+    const offers = require("../services/offers");
+    const rows = await offers.list(req.merchantId, { kind: req.query.kind || null });
+    res.json({ object: "list", data: rows.map(offers.toApi), has_more: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/offers", secretKeyOnly, async (req, res, next) => {
+  try {
+    const offers = require("../services/offers");
+    const offer = await offers.create(req.merchantId, req.body || {});
+    res.status(201).json(offers.toApi(await offers.findByPublicId(req.merchantId, offer.public_id)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/offers/:id", secretKeyOnly, async (req, res, next) => {
+  try {
+    const offers = require("../services/offers");
+    // Deactivated, never deleted: an order points at it, and a receipt that
+    // cannot name what was bought is worse than a stale row.
+    const offer = await offers.deactivate(req.merchantId, req.params.id);
+    res.json(offers.toApi(offer));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Coupons
 // ---------------------------------------------------------------------------
 
