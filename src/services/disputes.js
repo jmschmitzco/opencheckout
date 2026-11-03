@@ -13,7 +13,6 @@
 const db = require("../db");
 const ids = require("../lib/ids");
 const v = require("../lib/validators");
-const { notFound } = require("../lib/errors");
 const events = require("./events");
 const webhooksOut = require("./webhooks-out");
 
