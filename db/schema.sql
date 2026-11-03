@@ -277,6 +277,13 @@ create table if not exists orders (
   coupon_code        text,
   gateway            text,
   gateway_charge_id  text,
+  -- A second identifier, for gateways where the thing that holds the money is
+  -- not the thing that was created. PayPal is the case: the ORDER is what we
+  -- create and the CAPTURE is what was paid, and a refund needs the capture.
+  gateway_capture_id text,
+  -- Where to send the buyer when the gateway takes over, as PayPal does. The
+  -- order is pending until they come back and the capture succeeds.
+  redirect_url       text,
   card_token         text,
   card_brand         text,
   card_last4         text,

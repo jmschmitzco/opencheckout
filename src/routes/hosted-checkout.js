@@ -276,6 +276,9 @@ router.post(
             ? withOrderParams(req.session_.success_url, order)
             : null,
       };
+      // A redirect gateway has not been paid yet; it has handed us an address
+      // to send the buyer to. Both cannot be set at once.
+      if (body.redirect_url) body.next_url = null;
 
       if (req.idempotency) await req.idempotency.complete(201, body, order.id);
       res.status(201).json(body);

@@ -6,6 +6,8 @@ different answers and an integrator deserves to know which one they got.
 
 ## Built
 
+- Four real gateway adapters: Asaas, Pagar.me, Mercado Pago and PayPal, plus
+  the simulated one. See `src/gateways/contract.md` for what each can do.
 - Checkout sessions: the API, the hosted page, the embedded widget
 - Server-side pricing, with line items from a catalogue or ad hoc
 - Card with instalments, Pix, boleto, PayPal as method types
@@ -25,18 +27,15 @@ different answers and an integrator deserves to know which one they got.
 
 ## Next
 
-### 1. The real gateway adapters
+### 1. Mercado Pago card payments
 
-The contract is written (`src/gateways/contract.md`) and the simulated adapter
-implements all of it. Still to write: Asaas, Pagar.me, Mercado Pago, PayPal.
+The adapter's card path is written. What is missing is on the page: Mercado
+Pago requires the card to be tokenized in the BROWSER with their public key,
+which needs their SDK loaded on the checkout, a content policy entry for it,
+and a gateway-specific step before submit.
 
-Each one needs: customer creation, charge creation for its methods, charge by
-saved token, a status query, a refund, signature verification and webhook
-parsing. The contract document is the specification; the demo adapter is the
-worked example.
-
-Read each processor's current documentation when mapping statuses. Status
-names are the thing most likely to have changed since anybody last looked.
+Until then `supportedMethods` leaves card out, so the method is never offered
+through Mercado Pago rather than being offered and failing.
 
 ### 2. The merchant dashboard
 

@@ -25,14 +25,39 @@ function cacheKey(merchantId, gateway, livemode) {
   return `${merchantId}:${gateway}:${livemode ? "live" : "test"}`;
 }
 
-// What each gateway needs, and which of those fields are secret. Used to
-// validate a save and to decide what may be shown back.
+// What each gateway needs, and which of those fields are secret.
+//
+// `required` is what the API cannot work without. `verification` is what the
+// WEBHOOK cannot be verified without, and it is separate because the
+// consequence is different: without it the gateway still charges, and every
+// notification it sends is silently discarded. A paid order that never
+// confirms is worse than one that never starts, because the money moved.
 const SHAPES = {
-  asaas: { required: ["apiKey"], secret: ["apiKey", "webhookToken"] },
-  pagarme: { required: ["secretKey"], secret: ["secretKey", "webhookPassword"] },
-  mercadopago: { required: ["accessToken"], secret: ["accessToken", "webhookSecret"] },
-  paypal: { required: ["clientId", "secret"], secret: ["secret"] },
+  asaas: {
+    required: ["apiKey"],
+    verification: ["webhookToken"],
+    secret: ["apiKey", "webhookToken"],
+  },
+  pagarme: {
+    required: ["secretKey"],
+    verification: ["webhookUser", "webhookPassword"],
+    secret: ["secretKey", "webhookPassword"],
+  },
+  mercadopago: {
+    required: ["accessToken"],
+    verification: ["webhookSecret"],
+    secret: ["accessToken", "webhookSecret"],
+  },
+  paypal: {
+    required: ["clientId", "secret"],
+    verification: ["webhookId"],
+    secret: ["secret"],
+  },
 };
+
+// Gateways that have a sandbox worth offering. A developer evaluating this
+// project needs to make a charge before they have a production account.
+const HAS_SANDBOX = ["asaas", "paypal"];
 
 async function save({ merchantId, gateway, livemode = false, credentials }) {
   const shape = SHAPES[gateway];
@@ -52,6 +77,21 @@ async function save({ merchantId, gateway, livemode = false, credentials }) {
     if (text) clean[field] = text;
   }
 
+  // Sandbox is opt-in and only where it exists. An unknown value is ignored
+  // rather than guessed, because guessing "sandbox" would send real sales to a
+  // test account and guessing "production" would charge real cards in a test.
+  if (incoming.environment === "sandbox" && HAS_SANDBOX.includes(gateway)) {
+    clean.environment = "sandbox";
+  } else {
+    clean.environment = "production";
+  }
+
+  // A gateway saved without what its webhook verification needs will take
+  // money and then have every confirmation thrown away. That is reported back
+  // rather than refused, so a merchant can set the API key first and the
+  // webhook second, which is the order the gateway dashboards work in.
+  const missingVerification = (shape.verification || []).filter((field) => !clean[field]);
+
   const existing = await db.query(
     `select id, webhook_token from gateway_credentials
       where merchant_id = $1 and gateway = $2 and livemode = $3`,
@@ -66,7 +106,11 @@ async function save({ merchantId, gateway, livemode = false, credentials }) {
       [merchantId, gateway, Boolean(livemode), encryptJson(clean)]
     );
     cache.delete(cacheKey(merchantId, gateway, livemode));
-    return { webhookToken: existing.rows[0].webhook_token, created: false };
+    return {
+      webhookToken: existing.rows[0].webhook_token,
+      created: false,
+      missingVerification,
+    };
   }
 
   // The unguessable part of the callback URL the gateway is configured with.
@@ -81,7 +125,7 @@ async function save({ merchantId, gateway, livemode = false, credentials }) {
     [merchantId, gateway, Boolean(livemode), encryptJson(clean), webhookToken]
   );
   cache.delete(cacheKey(merchantId, gateway, livemode));
-  return { webhookToken, created: true };
+  return { webhookToken, created: true, missingVerification };
 }
 
 async function credentialsFor({ merchantId, gateway, livemode = false }) {
@@ -129,50 +173,47 @@ async function listConfigured({ merchantId, livemode = null }) {
   }));
 }
 
-// Which payment methods this merchant can actually offer, which is the
-// intersection of what they configured and what those gateways support.
+// Which payment methods this merchant can actually offer: what they have
+// configured, intersected with what those gateways can do.
 //
-// The checkout calls this before drawing the method buttons. Offering a method
-// that cannot be charged is the worst kind of bug here: the buyer picks it,
-// fills everything in, and only then finds out.
+// The checkout calls this before drawing the method buttons, and session
+// creation calls it before promising anything. Offering a method that cannot
+// be charged is the worst bug on a checkout: the buyer picks it, fills
+// everything in, and only then finds out.
 async function availableMethods({ merchantId, livemode = false }) {
   const { isDemo } = require("../config");
   if (isDemo()) return ["pix", "card", "boleto"];
 
+  const { capabilitiesOf } = require("../gateways");
   const configured = await listConfigured({ merchantId, livemode });
-  const names = configured.filter((row) => row.active).map((row) => row.gateway);
 
   const methods = new Set();
-  for (const name of names) {
-    if (name === "paypal") {
-      methods.add("paypal");
-      continue;
-    }
-    // The three routable Brazilian processors each cover all three
-    // instruments. A gateway added later declares its own list through its
-    // adapter's supportedMethods.
-    methods.add("pix");
-    methods.add("card");
-    methods.add("boleto");
+  for (const row of configured) {
+    if (!row.active) continue;
+    for (const method of capabilitiesOf(row.gateway).methods) methods.add(method);
   }
-  return Array.from(methods);
+  // Returned in a stable order, so the page draws the buttons the same way
+  // every time rather than in whatever order the rows came back.
+  return ["pix", "card", "boleto", "paypal"].filter((method) => methods.has(method));
 }
 
-// Which gateway takes a given method.
-//
-// With more than one configured, the first in ROUTABLE order wins. Explicit
-// per-method routing is a dashboard feature worth having later; picking
-// deterministically now means the behaviour is at least predictable.
+// Which gateway takes a given method, for this merchant.
 async function gatewayForMethod({ merchantId, method, livemode = false }) {
-  const { ROUTABLE } = require("../gateways");
-  if (method === "paypal") return "paypal";
+  const { gatewaysForMethod } = require("../gateways");
 
   const configured = await listConfigured({ merchantId, livemode });
   const active = configured.filter((row) => row.active).map((row) => row.gateway);
-  const chosen = ROUTABLE.find((name) => active.includes(name));
-  if (!chosen) {
+  if (!active.length) {
     throw badRequest(
       "No payment gateway is configured for this merchant. Add one in the dashboard before selling."
+    );
+  }
+
+  const candidates = gatewaysForMethod(method);
+  const chosen = candidates.find((name) => active.includes(name));
+  if (!chosen) {
+    throw badRequest(
+      `None of the configured gateways can take ${method}. Configured: ${active.join(", ")}.`
     );
   }
   return chosen;
@@ -208,6 +249,7 @@ function clearCache() {
 
 module.exports = {
   SHAPES,
+  HAS_SANDBOX,
   save,
   credentialsFor,
   listConfigured,

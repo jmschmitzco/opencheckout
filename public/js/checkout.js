@@ -413,11 +413,27 @@
       return;
     }
 
+    // The gateway takes over from here, as PayPal does. Nothing happens until
+    // the buyer goes, so there is no waiting screen to show: send them.
+    if (data.redirect_url) return leaveFor(data.redirect_url);
+
     if (data.next_url) return finish(data);
 
     // Pending: show the waiting screen and start asking.
     showWaiting(data);
     startPolling(data.order_id, data.token);
+  }
+
+  // Sends the buyer to the gateway. Inside the widget this has to be the TOP
+  // window: approving a payment inside an iframe is blocked by most gateways,
+  // and the ones that allow it put the buyer in a box where they cannot see
+  // the address bar they are being asked to trust.
+  function leaveFor(url) {
+    if (framed) {
+      window.parent.postMessage({ source: "opencheckout", type: "redirect", url: url }, "*");
+      return;
+    }
+    window.location.assign(url);
   }
 
   function finish(data) {

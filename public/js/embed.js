@@ -174,6 +174,15 @@
         if (data.next_url) window.location.assign(data.next_url);
         return;
       }
+      if (data.type === "redirect" && typeof data.url === "string") {
+        // The gateway is taking over. The TOP window goes, not the iframe:
+        // approving a payment inside a frame is blocked by most gateways, and
+        // the ones that allow it hide the address bar the buyer is being asked
+        // to trust.
+        close("redirect");
+        window.location.assign(data.url);
+        return;
+      }
       if (data.type === "cancel") {
         close("canceled");
         if (!options.onClose && data.cancel_url) window.location.assign(data.cancel_url);

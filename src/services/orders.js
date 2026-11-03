@@ -82,6 +82,20 @@ async function findByCharge(merchantId, gateway, gatewayChargeId) {
   return result.rows[0] || null;
 }
 
+// The order behind a gateway CAPTURE, for the gateways where the thing that
+// holds the money is not the thing that was created. PayPal is the case: we
+// create an order and the capture is what was paid, and a refund notification
+// names only the capture.
+async function findByCaptureId(merchantId, gateway, captureId) {
+  if (!captureId) return null;
+  const result = await db.query(
+    `select * from orders
+      where merchant_id = $1 and gateway = $2 and gateway_capture_id = $3`,
+    [merchantId, gateway, String(captureId)]
+  );
+  return result.rows[0] || null;
+}
+
 // An order read with its own token, which is what the thank-you page and the
 // status poller have. The token grants this one order and nothing else, so
 // there is no API key in a page the buyer can see.
@@ -374,7 +388,8 @@ async function chargeOrder({ merchant, order, customer, card, method, session })
         set gateway = $3, gateway_charge_id = $4, card_token = $5, card_brand = $6,
             card_last4 = $7, pix_qr_base64 = $8, pix_copy_paste = $9, pix_expires_at = $10,
             boleto_url = $11, boleto_barcode = $12, boleto_due_date = $13,
-            refusal_reason = $14, updated_at = now()
+            refusal_reason = $14, redirect_url = $15, gateway_capture_id = $16,
+            updated_at = now()
       where merchant_id = $1 and id = $2`,
     [
       merchant.id,
@@ -391,6 +406,9 @@ async function chargeOrder({ merchant, order, customer, card, method, session })
       (charge.boleto && charge.boleto.barcode) || null,
       (charge.boleto && charge.boleto.dueDate) || null,
       charge.refusalReason || null,
+      // Where the buyer has to go to finish, for a gateway that takes over.
+      (charge.redirect && charge.redirect.url) || null,
+      charge.captureId || null,
     ]
   );
 
@@ -712,6 +730,10 @@ function toStatusView(order, { locale = "pt-BR" } = {}) {
     boleto: order.boleto_url
       ? { url: order.boleto_url, barcode: order.boleto_barcode, due_date: order.boleto_due_date }
       : null,
+    // Set when the gateway takes the buyer away to finish, as PayPal does.
+    // The page sends them there instead of showing a waiting screen, because
+    // nothing will happen until they go.
+    redirect_url: order.status === "pending" ? order.redirect_url || null : null,
     message:
       order.status === "paid"
         ? pt
@@ -730,6 +752,7 @@ module.exports = {
   findById,
   findByPublicId,
   findByCharge,
+  findByCaptureId,
   findByToken,
   itemsOf,
   list,
