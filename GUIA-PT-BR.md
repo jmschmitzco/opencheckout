@@ -230,14 +230,35 @@ nome no `window` entram no código dos clientes e depois doem para mudar.
 Hoje o projeto está numa pasta dentro do repositório da Mitzshop, o que foi de
 propósito: assim dá para comparar os dois lado a lado enquanto ele cresce.
 
-Quando quiser separar:
+**O ramo já está pronto.** Eu rodei o comando que separa a pasta:
 
 ```bash
 git subtree split --prefix=opencheckout -b opencheckout-only
 ```
 
-Isso cria um ramo só com essa pasta e o histórico dela, pronto para empurrar
-para um repositório novo no GitHub.
+Ele criou o ramo `opencheckout-only`, com 95 arquivos e só os commits que
+tocaram nesta pasta. Nenhuma linha da Mitzshop foi junto, e eu conferi: não há
+`.env` rastreado, nenhuma chave de verdade, nenhuma referência ao seu domínio
+nem ao IP da VPS.
+
+Para publicar, faltam dois comandos. **Eu não consegui rodar nem um nem outro**,
+porque a trava de segurança desta sessão bloqueia criar repositório e enviar
+código para fora da máquina, e eu não devo contornar isso. São seus:
+
+```bash
+gh repo create opencheckout --public --description "Open source, white label checkout for SaaS. Self-hosted, your own payment processor account."
+```
+
+```bash
+git push git@github.com:jmschmitzco/opencheckout.git opencheckout-only:main
+```
+
+Os dois rodam de dentro da pasta do worktree
+(`.claude/worktrees/checkout-open-source-saas-7a362a`), não de dentro de
+`opencheckout/`.
+
+Se preferir começar fechado, troque `--public` por `--private` no primeiro
+comando. Dá para abrir depois, em Settings, e o endereço continua o mesmo.
 
 Antes de publicar, confira três coisas:
 
