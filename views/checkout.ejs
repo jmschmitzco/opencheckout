@@ -1,0 +1,380 @@
+<%- include("partials/head", { title: (theme.brand_name || merchant.name) + " checkout", theme, themeStyle, webfontHref, locale }) %>
+
+<% const pt = String(locale).toLowerCase().startsWith("pt"); %>
+<% const t = (en, br) => (pt ? br : en); %>
+<% const asks = (field) => buyerFields.includes(field); %>
+
+<% if (copy.topBarText) { %>
+  <div class="oc-topbar"><%= copy.topBarText %></div>
+<% } %>
+
+<main class="oc-page oc-page--<%= theme.template %><%= framed ? " oc-page--framed" : "" %>">
+
+  <%#
+    THE ORDER SUMMARY.
+    It comes first in the document on purpose. On a phone it collapses into a
+    line the buyer can tap open, and on a wide screen the stylesheet puts it
+    beside the form. Document order follows reading order, which is also tab
+    order, and the two must not disagree on a page with a card field.
+  %>
+  <% if (theme.show_order_summary && theme.template !== "compact") { %>
+    <section class="oc-summary" aria-labelledby="oc-summary-title">
+      <%- include("partials/brand", { theme, merchant }) %>
+
+      <details class="oc-summary__collapse" open>
+        <summary class="oc-summary__toggle">
+          <span id="oc-summary-title"><%= t("Order summary", "Resumo do pedido") %></span>
+          <strong class="oc-summary__peek" data-oc-total><%= format(session.total_cents) %></strong>
+        </summary>
+
+        <ul class="oc-items">
+          <% items.forEach(function (item) { %>
+            <li class="oc-item">
+              <% if (item.image_url) { %>
+                <img class="oc-item__image" src="<%= item.image_url %>" alt="" width="48" height="48">
+              <% } %>
+              <div class="oc-item__body">
+                <p class="oc-item__name"><%= item.description %></p>
+                <% if (item.quantity > 1) { %>
+                  <p class="oc-item__meta">
+                    <%= item.quantity %> &times; <%= format(item.unit_amount_cents) %>
+                  </p>
+                <% } %>
+                <% if (item.type === "recurring") { %>
+                  <p class="oc-item__meta">
+                    <%= t("Every", "A cada") %>
+                    <%= item.interval_count > 1 ? item.interval_count + " " : "" %><%= item.interval %><%= item.interval_count > 1 ? "s" : "" %>
+                    <% if (item.trial_days) { %>
+                      &middot; <%= item.trial_days %> <%= t("day free trial", "dias de teste") %>
+                    <% } %>
+                  </p>
+                <% } %>
+              </div>
+              <div class="oc-item__price">
+                <% if (item.compare_at_cents) { %>
+                  <s class="oc-item__compare"><%= format(item.compare_at_cents * item.quantity) %></s>
+                <% } %>
+                <span><%= format(item.amount_cents) %></span>
+              </div>
+            </li>
+          <% }); %>
+        </ul>
+
+        <dl class="oc-totals">
+          <div class="oc-totals__row">
+            <dt><%= t("Subtotal", "Subtotal") %></dt>
+            <dd data-oc-subtotal><%= format(session.subtotal_cents) %></dd>
+          </div>
+          <div class="oc-totals__row oc-totals__row--discount<%= session.discount_cents ? "" : " oc-hidden" %>"
+               data-oc-discount-row>
+            <dt>
+              <%= t("Discount", "Desconto") %>
+              <span class="oc-chip" data-oc-coupon-chip><%= session.coupon_code || "" %></span>
+            </dt>
+            <dd data-oc-discount>&minus;<%= format(session.discount_cents) %></dd>
+          </div>
+          <div class="oc-totals__row oc-totals__row--total">
+            <dt><%= t("Total", "Total") %></dt>
+            <dd data-oc-total><%= format(session.total_cents) %></dd>
+          </div>
+        </dl>
+
+        <% if (session.allow_coupon && theme.show_coupon) { %>
+          <div class="oc-coupon">
+            <label class="oc-coupon__label" for="oc-coupon">
+              <%= t("Discount code", "Cupom de desconto") %>
+            </label>
+            <div class="oc-coupon__row">
+              <input class="oc-input" id="oc-coupon" name="coupon" type="text"
+                     autocomplete="off" autocapitalize="characters" spellcheck="false"
+                     value="<%= session.coupon_code || "" %>"
+                     placeholder="<%= t("Enter a code", "Digite o código") %>">
+              <button class="oc-button oc-button--ghost" type="button" data-oc-apply-coupon>
+                <%= t("Apply", "Aplicar") %>
+              </button>
+            </div>
+            <p class="oc-field__error" data-oc-coupon-error role="status" aria-live="polite"></p>
+          </div>
+        <% } %>
+      </details>
+    </section>
+  <% } %>
+
+  <%# THE FORM. %>
+  <section class="oc-panel">
+    <% if (theme.template === "compact") { %>
+      <%- include("partials/brand", { theme, merchant }) %>
+    <% } %>
+
+    <header class="oc-panel__head">
+      <h1 class="oc-headline"><%= copy.headline %></h1>
+      <% if (copy.subheadline) { %>
+        <p class="oc-subheadline"><%= copy.subheadline %></p>
+      <% } %>
+      <% if (theme.template === "compact") { %>
+        <p class="oc-compact-total">
+          <span><%= t("Total", "Total") %></span>
+          <strong data-oc-total><%= format(session.total_cents) %></strong>
+        </p>
+      <% } %>
+    </header>
+
+    <%#
+      A real <form>, with method and action, so it still submits something
+      sensible if the script fails to load. checkout.js takes it over on
+      submit; without the script the browser posts the fields and the server
+      answers with JSON, which is a poor experience but not a lost buyer with
+      no idea what happened.
+    %>
+    <form class="oc-form" id="oc-form" method="post"
+          action="/c/<%= session.public_id %>/pay?k=<%= session.client_secret %>"
+          novalidate>
+
+      <fieldset class="oc-fieldset">
+        <legend class="oc-legend"><%= t("Your details", "Seus dados") %></legend>
+
+        <%#
+          The floating label needs the input BEFORE the label in the document,
+          and a placeholder of a single space, so CSS can tell an empty field
+          from a filled one with :placeholder-shown. The label is still
+          associated by `for`, so a screen reader reads it first regardless of
+          document order.
+        %>
+        <div class="oc-field oc-field--float">
+          <input class="oc-input" id="oc-email" name="email" type="email"
+                 inputmode="email" autocomplete="email" placeholder=" "
+                 required spellcheck="false"
+                 value="<%= session.customer_email || "" %>">
+          <label class="oc-label" for="oc-email"><%= t("Email", "E-mail") %></label>
+          <p class="oc-field__error" data-oc-error-for="email"></p>
+        </div>
+
+        <% if (asks("confirm_email")) { %>
+          <div class="oc-field oc-field--float">
+            <input class="oc-input" id="oc-confirm-email" name="confirm_email" type="email"
+                   inputmode="email" autocomplete="email" placeholder=" " required spellcheck="false">
+            <label class="oc-label" for="oc-confirm-email"><%= t("Confirm email", "Confirme o e-mail") %></label>
+            <p class="oc-field__error" data-oc-error-for="confirm_email"></p>
+          </div>
+        <% } %>
+
+        <% if (asks("name")) { %>
+          <div class="oc-field oc-field--float">
+            <input class="oc-input" id="oc-name" name="name" type="text"
+                   autocomplete="name" placeholder=" " required>
+            <label class="oc-label" for="oc-name"><%= t("Full name", "Nome completo") %></label>
+            <p class="oc-field__error" data-oc-error-for="name"></p>
+          </div>
+        <% } %>
+
+        <div class="oc-row">
+          <% if (asks("document")) { %>
+            <div class="oc-field oc-field--float">
+              <input class="oc-input" id="oc-document" name="document" type="text"
+                     inputmode="numeric" autocomplete="off" placeholder=" " required>
+              <label class="oc-label" for="oc-document">CPF / CNPJ</label>
+              <p class="oc-field__error" data-oc-error-for="document"></p>
+            </div>
+          <% } %>
+
+          <% if (asks("phone")) { %>
+            <div class="oc-field oc-field--float">
+              <input class="oc-input" id="oc-phone" name="phone" type="tel"
+                     inputmode="tel" autocomplete="tel" placeholder=" " required>
+              <label class="oc-label" for="oc-phone"><%= t("Phone", "Telefone") %></label>
+              <p class="oc-field__error" data-oc-error-for="phone"></p>
+            </div>
+          <% } %>
+        </div>
+
+        <% if (asks("address")) { %>
+          <div class="oc-row">
+            <div class="oc-field oc-field--float">
+              <input class="oc-input" id="oc-postal-code" name="postal_code" type="text"
+                     inputmode="numeric" autocomplete="postal-code" placeholder=" " required>
+              <label class="oc-label" for="oc-postal-code"><%= t("Postal code", "CEP") %></label>
+              <p class="oc-field__error" data-oc-error-for="postal_code"></p>
+            </div>
+            <div class="oc-field oc-field--float oc-field--narrow">
+              <input class="oc-input" id="oc-address-number" name="address_number" type="text"
+                     autocomplete="address-line2" placeholder=" " required>
+              <label class="oc-label" for="oc-address-number"><%= t("Number", "Número") %></label>
+              <p class="oc-field__error" data-oc-error-for="address_number"></p>
+            </div>
+          </div>
+        <% } %>
+      </fieldset>
+
+      <%# PAYMENT METHOD. One method needs no chooser. %>
+      <fieldset class="oc-fieldset">
+        <legend class="oc-legend"><%= t("Payment", "Pagamento") %></legend>
+
+        <% if (methods.length > 1) { %>
+          <div class="oc-methods" role="radiogroup" aria-label="<%= t("Payment method", "Forma de pagamento") %>">
+            <% methods.forEach(function (method, index) { %>
+              <label class="oc-method">
+                <input class="oc-method__input" type="radio" name="method"
+                       value="<%= method %>" <%= index === 0 ? "checked" : "" %>>
+                <span class="oc-method__face">
+                  <span class="oc-method__icon" data-oc-icon="<%= method %>" aria-hidden="true"></span>
+                  <span class="oc-method__label">
+                    <% if (method === "card") { %><%= t("Card", "Cartão") %>
+                    <% } else if (method === "pix") { %>Pix
+                    <% } else if (method === "boleto") { %>Boleto
+                    <% } else if (method === "paypal") { %>PayPal<% } %>
+                  </span>
+                  <span class="oc-method__check" aria-hidden="true"></span>
+                </span>
+              </label>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <input type="hidden" name="method" value="<%= methods[0] %>">
+        <% } %>
+
+        <%#
+          The card group. The DOM order is the visual order, so Tab moves the
+          way the eye does: number, then expiry, then code, then the name.
+        %>
+        <div class="oc-card-group<%= methods[0] === "card" ? "" : " oc-hidden" %>" data-oc-card-fields>
+          <div class="oc-field oc-field--float oc-field--card">
+            <input class="oc-input" id="oc-card-number" name="card_number" type="text"
+                   inputmode="numeric" autocomplete="cc-number" placeholder=" "
+                   maxlength="23" spellcheck="false">
+            <label class="oc-label" for="oc-card-number"><%= t("Card number", "Número do cartão") %></label>
+            <span class="oc-card-brand" data-oc-card-brand aria-hidden="true"></span>
+            <p class="oc-field__error" data-oc-error-for="number"></p>
+          </div>
+
+          <div class="oc-row">
+            <div class="oc-field oc-field--float">
+              <input class="oc-input" id="oc-card-expiry" name="card_expiry" type="text"
+                     inputmode="numeric" autocomplete="cc-exp" placeholder=" " maxlength="7">
+              <label class="oc-label" for="oc-card-expiry"><%= t("MM / YY", "MM / AA") %></label>
+              <p class="oc-field__error" data-oc-error-for="expiry"></p>
+            </div>
+            <div class="oc-field oc-field--float">
+              <input class="oc-input" id="oc-card-cvv" name="card_cvv" type="text"
+                     inputmode="numeric" autocomplete="cc-csc" placeholder=" " maxlength="4">
+              <label class="oc-label" for="oc-card-cvv"><%= t("Security code", "Código") %></label>
+              <p class="oc-field__error" data-oc-error-for="cvv"></p>
+            </div>
+          </div>
+
+          <div class="oc-field oc-field--float">
+            <input class="oc-input" id="oc-card-holder" name="card_holder" type="text"
+                   autocomplete="cc-name" placeholder=" ">
+            <label class="oc-label" for="oc-card-holder"><%= t("Name on card", "Nome no cartão") %></label>
+            <p class="oc-field__error" data-oc-error-for="holder_name"></p>
+          </div>
+
+          <% if (theme.show_installments && maxInstallments > 1) { %>
+            <div class="oc-field">
+              <label class="oc-label oc-label--static" for="oc-installments">
+                <%= t("Installments", "Parcelas") %>
+              </label>
+              <select class="oc-input oc-select" id="oc-installments" name="installments">
+                <% installmentOptions.forEach(function (option) { %>
+                  <option value="<%= option.count %>">
+                    <%= option.count %>&times; <%= option.label %><%= option.count === 1 ? " " + t("in full", "à vista") : "" %>
+                  </option>
+                <% }); %>
+              </select>
+            </div>
+          <% } %>
+        </div>
+
+        <%# What each non-card method is about to do, so nobody is surprised. %>
+        <p class="oc-method-note oc-hidden" data-oc-note="pix">
+          <%= t("You will see a QR code to pay with your bank app. Approval is instant.",
+                "Você verá um QR code para pagar no aplicativo do seu banco. A aprovação é na hora.") %>
+        </p>
+        <p class="oc-method-note oc-hidden" data-oc-note="boleto">
+          <%= t("You will get a bank slip. It can take up to two business days to clear.",
+                "Você receberá um boleto. A compensação pode levar até dois dias úteis.") %>
+        </p>
+        <p class="oc-method-note oc-hidden" data-oc-note="paypal">
+          <%= t("You will finish the payment on PayPal and come back here.",
+                "Você finaliza o pagamento no PayPal e volta para cá.") %>
+        </p>
+      </fieldset>
+
+      <p class="oc-form__error" data-oc-form-error role="alert" aria-live="assertive"></p>
+
+      <button class="oc-submit" type="submit" data-oc-submit>
+        <span class="oc-submit__label"><%= copy.submitLabel %></span>
+        <span class="oc-submit__amount" data-oc-total><%= format(session.total_cents) %></span>
+        <span class="oc-spinner" aria-hidden="true"></span>
+      </button>
+
+      <% if (theme.show_secure_badge) { %>
+        <p class="oc-secure">
+          <span class="oc-secure__icon" aria-hidden="true"></span>
+          <%= copy.secureBadgeText %>
+        </p>
+      <% } %>
+
+      <% if (copy.supportText) { %>
+        <p class="oc-support"><%= copy.supportText %></p>
+      <% } %>
+
+      <% if (session.cancel_url) { %>
+        <p class="oc-cancel">
+          <a href="<%= session.cancel_url %>" data-oc-cancel><%= t("Go back", "Voltar") %></a>
+        </p>
+      <% } %>
+    </form>
+
+    <%- include("partials/footer", { theme, merchant, copy }) %>
+  </section>
+
+  <%#
+    THE WAITING SCREEN, already in the document and hidden.
+    Rendering it now rather than building it in JavaScript means the Pix code
+    appears the instant the answer arrives, with no second paint and no layout
+    jump at the exact moment the buyer is deciding whether this worked.
+  %>
+  <section class="oc-waiting oc-hidden" data-oc-waiting aria-live="polite">
+    <div class="oc-waiting__card oc-panel">
+      <%- include("partials/brand", { theme, merchant }) %>
+      <h2 class="oc-waiting__title" data-oc-waiting-title></h2>
+      <p class="oc-waiting__text" data-oc-waiting-text></p>
+
+      <div class="oc-pix oc-hidden" data-oc-pix>
+        <img class="oc-pix__qr" alt="<%= t("Pix QR code", "QR code do Pix") %>" data-oc-pix-qr width="220" height="220">
+        <label class="oc-label oc-label--static" for="oc-pix-code">
+          <%= t("Or copy the code", "Ou copie o código") %>
+        </label>
+        <div class="oc-coupon__row">
+          <input class="oc-input" id="oc-pix-code" type="text" readonly data-oc-pix-code>
+          <button class="oc-button oc-button--ghost" type="button" data-oc-copy-pix>
+            <%= t("Copy", "Copiar") %>
+          </button>
+        </div>
+      </div>
+
+      <div class="oc-boleto oc-hidden" data-oc-boleto>
+        <a class="oc-button" target="_blank" rel="noopener noreferrer" data-oc-boleto-url>
+          <%= t("Open the bank slip", "Abrir o boleto") %>
+        </a>
+        <p class="oc-waiting__barcode" data-oc-boleto-barcode></p>
+      </div>
+
+      <p class="oc-waiting__status">
+        <span class="oc-spinner oc-spinner--inline" aria-hidden="true"></span>
+        <span data-oc-poll-status><%= t("Waiting for confirmation", "Aguardando a confirmação") %></span>
+      </p>
+    </div>
+  </section>
+</main>
+
+<%#
+  Configuration for checkout.js, as data rather than script.
+  The content policy forbids inline <script>, and that is the directive doing
+  the most work on a page like this one. A JSON block is not executed, so it
+  passes the policy and carries no risk.
+%>
+<script type="application/json" id="oc-config"><%- JSON.stringify(publicConfig) %></script>
+<script src="/static/js/checkout.js" defer></script>
+</body>
+</html>

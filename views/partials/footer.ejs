@@ -1,0 +1,31 @@
+<%#
+  Page footer: support contact, the merchant's own footer text, and the
+  attribution.
+
+  `powered_by` defaults to on and can be turned off, because the licence
+  allows it. It defaults on so the project gets credit from the installations
+  that do not care either way.
+%>
+<footer class="oc-footer">
+  <% if (copy.footerText) { %>
+    <p class="oc-footer__text"><%= copy.footerText %></p>
+  <% } %>
+
+  <% if (merchant.support_email || merchant.support_url) { %>
+    <p class="oc-footer__support">
+      <% if (merchant.support_url) { %>
+        <a href="<%= merchant.support_url %>" target="_blank" rel="noopener noreferrer">Need help?</a>
+      <% } else { %>
+        Need help? <a href="mailto:<%= merchant.support_email %>"><%= merchant.support_email %></a>
+      <% } %>
+    </p>
+  <% } %>
+
+  <% if (theme.powered_by) { %>
+    <p class="oc-footer__credit">
+      <a href="https://github.com/opencheckout/opencheckout" target="_blank" rel="noopener noreferrer">
+        Powered by OpenCheckout
+      </a>
+    </p>
+  <% } %>
+</footer>

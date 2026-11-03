@@ -1,0 +1,748 @@
+// Orders: the part that handles money.
+//
+// THREE RULES GOVERN THIS FILE. They are not style preferences; each one is
+// here because the alternative loses money or leaks data.
+//
+//   1. THE SERVER DECIDES THE PRICE. An order is priced from the stored
+//      checkout session, never from the request body. The browser sends which
+//      method, how many instalments and the card; it never sends an amount.
+//
+//   2. A SALE IS ONLY PAID WHEN THE GATEWAY SAYS SO, through a verified
+//      webhook or a server to server status query. The buyer's browser is
+//      never a source of truth about payment, no matter what it claims.
+//
+//   3. CARD DATA IS NEVER LOGGED OR STORED. It travels from the form to the
+//      adapter and stops there. What comes back is a token, a brand and the
+//      last four digits.
+const db = require("../db");
+const ctx = require("../db/merchant-context");
+const ids = require("../lib/ids");
+const v = require("../lib/validators");
+const money = require("../lib/money");
+const { randomUrlToken } = require("../lib/crypto");
+const { inBackground } = require("../lib/background-tasks");
+const { badRequest, conflict, notFound, gatewayError } = require("../lib/errors");
+const { getGateway } = require("../gateways");
+const sessions = require("./checkout-sessions");
+const customers = require("./customers");
+const catalog = require("./catalog");
+const events = require("./events");
+const webhooksOut = require("./webhooks-out");
+const gatewayConfig = require("./gateway-config");
+
+const STATUSES = ["pending", "paid", "refused", "refunded", "chargeback", "expired", "canceled"];
+
+// Which status may follow which.
+//
+// Written down as a table because gateways resend and reorder: a "pending"
+// arriving after a "paid" is normal traffic, not an error, and applying it
+// would un-pay a paid sale. A transition that is not listed is ignored, and
+// that is what makes the webhook handler idempotent.
+const ALLOWED_TRANSITIONS = {
+  pending: ["paid", "refused", "expired", "canceled", "refunded", "chargeback"],
+  paid: ["refunded", "chargeback"],
+  refused: ["paid"], // a retry on the same charge can still succeed
+  expired: ["paid"], // a boleto paid after its due date still clears
+  canceled: [],
+  refunded: ["chargeback"],
+  chargeback: ["refunded"],
+};
+
+const TERMINAL_PAID = ["paid", "refunded", "chargeback"];
+
+// ---------------------------------------------------------------------------
+// Reading
+// ---------------------------------------------------------------------------
+
+async function findById(merchantId, id) {
+  const result = await db.query(`select * from orders where merchant_id = $1 and id = $2`, [
+    merchantId,
+    id,
+  ]);
+  return result.rows[0] || null;
+}
+
+async function findByPublicId(merchantId, publicId) {
+  const result = await db.query(`select * from orders where merchant_id = $1 and public_id = $2`, [
+    merchantId,
+    publicId,
+  ]);
+  return result.rows[0] || null;
+}
+
+// The order behind a gateway charge id. Used by the webhook handler, which
+// knows the charge and nothing else.
+async function findByCharge(merchantId, gateway, gatewayChargeId) {
+  if (!gatewayChargeId) return null;
+  const result = await db.query(
+    `select * from orders
+      where merchant_id = $1 and gateway = $2 and gateway_charge_id = $3`,
+    [merchantId, gateway, String(gatewayChargeId)]
+  );
+  return result.rows[0] || null;
+}
+
+// An order read with its own token, which is what the thank-you page and the
+// status poller have. The token grants this one order and nothing else, so
+// there is no API key in a page the buyer can see.
+async function findByToken(merchantId, publicId, token) {
+  const order = await findByPublicId(merchantId, publicId);
+  if (!order) return null;
+  const { safeEqual } = require("../lib/crypto");
+  return safeEqual(order.checkout_token, token) ? order : null;
+}
+
+async function itemsOf(merchantId, orderId) {
+  const result = await db.query(
+    `select * from order_items where merchant_id = $1 and order_id = $2 order by id`,
+    [merchantId, orderId]
+  );
+  return result.rows;
+}
+
+async function list(merchantId, { status = null, customerId = null, limit = 50, before = null } = {}) {
+  const params = [merchantId];
+  const where = ["merchant_id = $1"];
+  if (status) {
+    params.push(status);
+    where.push(`status = $${params.length}`);
+  }
+  if (customerId) {
+    params.push(customerId);
+    where.push(`customer_id = $${params.length}`);
+  }
+  if (before) {
+    params.push(before);
+    where.push(`id < (select id from orders where merchant_id = $1 and public_id = $${params.length})`);
+  }
+  params.push(Math.max(1, Math.min(100, Number(limit) || 50)));
+  const result = await db.query(
+    `select * from orders where ${where.join(" and ")} order by id desc limit $${params.length}`,
+    params
+  );
+  return result.rows;
+}
+
+// ---------------------------------------------------------------------------
+// Creating
+// ---------------------------------------------------------------------------
+
+// Turns a checkout session into an order and charges it.
+//
+// Everything priced comes from the session row. `input` only carries what the
+// buyer legitimately chooses: who they are, how they want to pay, how many
+// instalments, and the card.
+async function createFromSession({ merchant, session, input = {}, remoteIp = null, userAgent = null }) {
+  const merchantId = merchant.id;
+
+  if (sessions.effectiveStatus(session) !== "open") {
+    throw conflict(`This checkout is ${sessions.effectiveStatus(session)}.`);
+  }
+
+  const methods = String(session.payment_methods || "").split(",").filter(Boolean);
+  const method = v.oneOf(input.method, methods);
+  if (!method) {
+    throw badRequest(`method must be one of: ${methods.join(", ")}.`, { method: "Invalid." });
+  }
+
+  // The gateway has to be able to take this method before the buyer fills
+  // anything in. Finding out afterwards is the worst version of this bug.
+  const available = await gatewayConfig.availableMethods({
+    merchantId,
+    livemode: session.livemode,
+  });
+  if (!available.includes(method)) {
+    throw conflict(
+      `No gateway configured for ${method}. Configure one in the dashboard, or offer another method.`
+    );
+  }
+
+  const buyer = await validateBuyer({ merchantId, session, input });
+  const customer = await customers.upsert(merchantId, buyer);
+
+  const items = sessions.parseLineItems(session);
+  const total = Math.max(0, Number(session.total_cents) || 0);
+  if (total <= 0) {
+    // A free checkout is a real need, and it is NOT this code path: there is
+    // nothing to charge, so there is no gateway to ask and no card to take.
+    // Refusing here keeps the money path honest; a free plan is handled by the
+    // integrator without a session at all.
+    throw badRequest("This checkout has nothing to charge. A zero total needs no payment.");
+  }
+
+  const maxInstallments = method === "card" ? maxInstallmentsForItems(items, session.currency) : 1;
+  const installments = money.normalizeInstallments(input.installments, maxInstallments, total);
+
+  let card = null;
+  if (method === "card") card = validateCard(input.card);
+
+  const order = await db.transaction(async (client) => {
+    const inserted = await client.query(
+      `insert into orders
+         (merchant_id, public_id, livemode, session_id, customer_id, kind, status,
+          payment_method, installments, currency, amount_cents, discount_cents,
+          coupon_code, external_reference, metadata, checkout_token, remote_ip, user_agent)
+       values ($1, $2, $3, $4, $5, 'main', 'pending', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       returning *`,
+      [
+        merchantId,
+        ids.publicId("order"),
+        session.livemode,
+        session.id,
+        customer.id,
+        method,
+        installments,
+        session.currency,
+        total,
+        session.discount_cents,
+        session.coupon_code,
+        session.external_reference,
+        session.metadata,
+        randomUrlToken(24),
+        remoteIp,
+        v.text(userAgent, 300),
+      ]
+    );
+    const row = inserted.rows[0];
+
+    for (const item of items) {
+      await client.query(
+        `insert into order_items
+           (merchant_id, order_id, kind, product_id, price_id, description,
+            quantity, unit_amount_cents, amount_cents)
+         values ($1, $2, 'main', $3, $4, $5, $6, $7, $8)`,
+        [
+          merchantId,
+          row.id,
+          item.product_id,
+          item.price_id,
+          item.description,
+          item.quantity,
+          item.unit_amount_cents,
+          item.amount_cents,
+        ]
+      );
+    }
+    return row;
+  });
+
+  // The charge is attempted OUTSIDE the transaction. Holding a database
+  // transaction open across a network call to a third party is how a slow
+  // gateway turns into an exhausted connection pool and a dead site.
+  const charged = await chargeOrder({ merchant, order, customer, card, method, session });
+
+  return charged;
+}
+
+function maxInstallmentsForItems(items, currency) {
+  if (currency !== "BRL") return 1;
+  // The most restrictive item wins. Offering twelve instalments because one
+  // line allows it, when another does not, means a charge the gateway refuses.
+  return items.reduce((lowest, item) => Math.min(lowest, item.max_installments || 1), 12);
+}
+
+// Checks what the buyer typed against what this session asks for.
+//
+// Two fields are special. The email is always required, because it is how the
+// receipt and the access reach them. The tax id and the address are required
+// by Brazilian gateways for Pix and registered boleto whether or not the
+// merchant asked for them on the form, which is why the session's field list
+// is a minimum and not a maximum.
+async function validateBuyer({ merchantId, session, input }) {
+  const raw = (input && input.buyer) || {};
+  const fields = String(session.buyer_fields || "").split(",").filter(Boolean);
+  const errors = {};
+
+  const email = v.email(raw.email || session.customer_email);
+  if (!email) errors.email = "A valid email is required.";
+
+  if (fields.includes("confirm_email")) {
+    const confirm = v.email(raw.confirm_email);
+    if (!confirm || confirm !== email) errors.confirm_email = "The two emails do not match.";
+  }
+
+  // Fills in from the record first, so a returning buyer is not asked again
+  // for something already on file. This is what makes hiding a field safe, and
+  // it is also the rule that goes with it: a field may only be hidden if it
+  // can be filled from here.
+  const known = await customers.completeFromRecord(merchantId, { ...raw, email });
+
+  const needsTaxId =
+    fields.includes("document") || (session.currency === "BRL" && ["pix", "boleto"].includes(input.method));
+  const needsAddress = session.currency === "BRL" && input.method === "boleto";
+
+  const buyer = {
+    email,
+    name: v.text(known.name, 120),
+    document: v.taxId(known.document),
+    phone: v.phoneBr(known.phone),
+    postalCode: v.postalCodeBr(known.postalCode),
+    addressNumber: v.text(known.addressNumber, 20),
+    country: (v.text(known.country, 2) || "BR").toUpperCase(),
+    // The integrator's own user id. It comes from the session when the session
+    // carried one, because that is the trustworthy source: the session was
+    // created by a server holding a secret key, and this form was filled in by
+    // a browser.
+    externalId: v.text(session.customer_external_id, 120) || v.text(raw.external_id, 120),
+  };
+
+  if (fields.includes("name") && !buyer.name) errors.name = "Required.";
+  if (needsTaxId && !buyer.document) {
+    errors.document = raw.document ? "This does not look like a valid CPF or CNPJ." : "Required.";
+  }
+  if (fields.includes("phone") && !buyer.phone) {
+    errors.phone = raw.phone ? "Include the area code." : "Required.";
+  }
+  if ((fields.includes("address") || needsAddress) && (!buyer.postalCode || !buyer.addressNumber)) {
+    if (!buyer.postalCode) errors.postal_code = "Required.";
+    if (!buyer.addressNumber) errors.address_number = "Required.";
+  }
+
+  if (Object.keys(errors).length) {
+    throw badRequest("Some details need fixing.", errors);
+  }
+  return buyer;
+}
+
+// Card validation happens here, before the gateway is called, so an obvious
+// typo costs no request and the buyer is never told "your bank declined" about
+// something no bank ever saw.
+function validateCard(raw) {
+  const card = raw && typeof raw === "object" ? raw : {};
+  const errors = {};
+
+  const number = v.digitsOnly(card.number);
+  if (!v.isValidCardNumber(number)) errors.number = "Check the card number.";
+
+  const holder = v.text(card.holder_name || card.holderName, 80);
+  if (!holder || !holder.includes(" ")) errors.holder_name = "Enter the full name on the card.";
+
+  const expiry = v.cardExpiry(card.expiry);
+  if (!expiry) errors.expiry = "Check the expiry date.";
+
+  const cvv = v.cardCvv(card.cvv);
+  if (!cvv) errors.cvv = "Check the security code.";
+
+  if (Object.keys(errors).length) {
+    // The message names fields, never values. An error string must never be
+    // able to carry a card number into a log.
+    throw badRequest("Check the card details.", errors);
+  }
+
+  return { number, holderName: holder, expiry: card.expiry, cvv, brand: v.cardBrand(number) };
+}
+
+// Calls the gateway and records what came back.
+async function chargeOrder({ merchant, order, customer, card, method, session }) {
+  const gateway = await getGateway({
+    merchantId: merchant.id,
+    method,
+    livemode: order.livemode,
+  });
+
+  const description = await describeOrder(merchant.id, order);
+  let charge;
+  try {
+    const { customerId } = await gateway.ensureCustomer(customer);
+    charge = await gateway.createCharge({
+      order: {
+        id: order.id,
+        publicId: order.public_id,
+        amountCents: order.amount_cents,
+        currency: order.currency,
+        description,
+        installments: order.installments,
+        method,
+        remoteIp: order.remote_ip,
+        statementName: merchant.statement_name,
+      },
+      customer,
+      customerId,
+      card,
+    });
+  } catch (err) {
+    // The gateway could not be reached, or answered something unusable. The
+    // order stays pending and the buyer is told to try again. It is NOT marked
+    // refused: we do not know that it was.
+    await recordCharge(merchant.id, order, { gateway: gateway.name, status: "error", detail: err.message });
+    console.error(`[orders] Charge failed for ${order.public_id}:`, err.message);
+    throw gatewayError("The payment could not be started. Please try again in a moment.");
+  }
+
+  await db.query(
+    `update orders
+        set gateway = $3, gateway_charge_id = $4, card_token = $5, card_brand = $6,
+            card_last4 = $7, pix_qr_base64 = $8, pix_copy_paste = $9, pix_expires_at = $10,
+            boleto_url = $11, boleto_barcode = $12, boleto_due_date = $13,
+            refusal_reason = $14, updated_at = now()
+      where merchant_id = $1 and id = $2`,
+    [
+      merchant.id,
+      order.id,
+      gateway.name,
+      charge.gatewayChargeId || null,
+      charge.cardToken || null,
+      charge.cardBrand || (card && card.brand) || null,
+      charge.cardLast4 || (card ? card.number.slice(-4) : null),
+      (charge.pix && charge.pix.qrCodeBase64) || null,
+      (charge.pix && charge.pix.copyPaste) || null,
+      (charge.pix && charge.pix.expiresAt) || null,
+      (charge.boleto && charge.boleto.url) || null,
+      (charge.boleto && charge.boleto.barcode) || null,
+      (charge.boleto && charge.boleto.dueDate) || null,
+      charge.refusalReason || null,
+    ]
+  );
+
+  await recordCharge(merchant.id, order, {
+    gateway: gateway.name,
+    gatewayChargeId: charge.gatewayChargeId,
+    status: charge.status,
+  });
+
+  const fresh = await findById(merchant.id, order.id);
+
+  // A card that approved immediately is paid now. Pix and boleto are pending
+  // until the gateway says otherwise.
+  if (charge.status === "paid") {
+    await markStatus(merchant.id, order.id, "paid", `gateway:${gateway.name}:sync`);
+  } else if (charge.status === "refused") {
+    await markStatus(merchant.id, order.id, "refused", `gateway:${gateway.name}:sync`);
+  } else {
+    await emitOrderEvent(merchant.id, fresh, "order.created");
+  }
+
+  if (session) {
+    await sessions.markCompleted(merchant.id, session.id, order.id);
+    await emitSessionEvent(merchant.id, session, "checkout.session.completed", order);
+    // Taking this cart off the abandoned list can happen after the buyer has
+    // their answer. It is accessory work, and it is registered rather than
+    // dropped so a shutdown or a test can wait for it.
+    inBackground(() =>
+      ctx.withMerchant(merchant.id, () =>
+        require("./carts").markRecovered(merchant.id, session.id)
+      )
+    );
+  }
+
+  return findById(merchant.id, order.id);
+}
+
+// What the buyer sees on their statement and in the gateway's dashboard.
+async function describeOrder(merchantId, order) {
+  const items = await itemsOf(merchantId, order.id);
+  if (!items.length) return `Order ${order.public_id}`;
+  if (items.length === 1) return items[0].description;
+  return `${items[0].description} and ${items.length - 1} more`;
+}
+
+async function recordCharge(merchantId, order, { gateway, gatewayChargeId = null, status, detail = null }) {
+  await db.query(
+    `insert into charges
+       (merchant_id, order_id, gateway, gateway_charge_id, status, amount_cents, currency, detail)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      merchantId,
+      order.id,
+      gateway,
+      gatewayChargeId,
+      status,
+      order.amount_cents,
+      order.currency,
+      // Truncated, and card data never reaches here: the adapter returns a
+      // token and a brand, never a number.
+      detail ? String(detail).slice(0, 2000) : null,
+    ]
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Status
+// ---------------------------------------------------------------------------
+
+// The one place an order's status changes.
+//
+// Idempotent by design: a transition that is not allowed from the current
+// status is ignored and reported as unchanged. Gateways resend and reorder,
+// and every one of those resends arrives here.
+async function markStatus(merchantId, orderId, newStatus, source = "unknown") {
+  if (!STATUSES.includes(newStatus)) throw new Error(`Unknown order status: ${newStatus}`);
+
+  const order = await findById(merchantId, orderId);
+  if (!order) throw notFound("Order not found.");
+  if (order.status === newStatus) return { changed: false, order };
+
+  const allowed = ALLOWED_TRANSITIONS[order.status] || [];
+  if (!allowed.includes(newStatus)) {
+    console.warn(
+      `[orders] Ignored ${order.status} -> ${newStatus} on ${order.public_id} (from ${source}).`
+    );
+    return { changed: false, order };
+  }
+
+  const timestamps = [];
+  const params = [merchantId, orderId, newStatus];
+  if (newStatus === "paid") timestamps.push("paid_at = now()");
+  if (newStatus === "refunded") timestamps.push("refunded_at = now()");
+
+  const result = await db.query(
+    `update orders
+        set status = $3, updated_at = now()${timestamps.length ? ", " + timestamps.join(", ") : ""}
+      where merchant_id = $1 and id = $2 and status = $4
+      returning *`,
+    [...params, order.status]
+  );
+  // Lost the race to another request handling the same notification. Not an
+  // error: the other one did the work, and doing it twice is what we are
+  // avoiding.
+  if (!result.rows[0]) return { changed: false, order: await findById(merchantId, orderId) };
+
+  const updated = result.rows[0];
+  const eventType = {
+    paid: "order.paid",
+    refused: "order.refused",
+    refunded: "order.refunded",
+    chargeback: "order.chargeback",
+    expired: "order.expired",
+  }[newStatus];
+  if (eventType) await emitOrderEvent(merchantId, updated, eventType);
+
+  // A paid subscription-mode order becomes a recurring commitment. This runs
+  // here, in the one place a status changes, rather than at the end of the
+  // charge: a Pix paid two minutes later has to create the subscription too,
+  // and that path never passes through the charge function again.
+  if (newStatus === "paid" && updated.session_id) {
+    await maybeStartSubscription(merchantId, updated);
+  }
+
+  return { changed: true, order: updated };
+}
+
+// Starts the subscription behind a paid subscription-mode order, if there is
+// one. Never throws: the sale already succeeded, and a bookkeeping failure
+// here must not look like a failed payment.
+async function maybeStartSubscription(merchantId, order) {
+  try {
+    const result = await db.query(
+      `select * from checkout_sessions where merchant_id = $1 and id = $2`,
+      [merchantId, order.session_id]
+    );
+    const session = result.rows[0];
+    if (!session || session.mode !== "subscription") return null;
+
+    const subscriptions = require("./subscriptions");
+    return await subscriptions.createFromPaidOrder({ merchantId, order, session });
+  } catch (err) {
+    console.error(
+      `[orders] Could not start the subscription for ${order.public_id}:`,
+      err && err.message
+    );
+    return null;
+  }
+}
+
+// Asks the gateway what the state is, server to server, and applies it.
+//
+// This is the second of the only two things that may mark a sale paid, and it
+// is what makes a missed webhook survivable. A gateway that cannot be reached
+// is NEVER read as paid: the call throws and the order stays as it was.
+async function reconcile(merchantId, order) {
+  if (!order.gateway || !order.gateway_charge_id) return { status: order.status, changed: false };
+  if (TERMINAL_PAID.includes(order.status)) return { status: order.status, changed: false };
+
+  const gateway = await getGateway({
+    merchantId,
+    gateway: order.gateway,
+    livemode: order.livemode,
+  });
+
+  let remote;
+  try {
+    remote = await gateway.getChargeStatus(order.gateway_charge_id);
+  } catch (err) {
+    console.error(`[orders] Could not read ${order.public_id} from ${order.gateway}:`, err.message);
+    return { status: order.status, changed: false, unreachable: true };
+  }
+
+  if (!remote || !remote.status || remote.status === order.status) {
+    return { status: order.status, changed: false };
+  }
+
+  const { changed, order: updated } = await markStatus(
+    merchantId,
+    order.id,
+    remote.status,
+    `gateway:${order.gateway}:query`
+  );
+  return { status: updated.status, changed };
+}
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+// The payload an integrator receives. Defined once, so a column rename cannot
+// change the contract, and so one place decides what is and is not exposed.
+async function toEventPayload(merchantId, order) {
+  const [items, customer] = await Promise.all([
+    itemsOf(merchantId, order.id),
+    order.customer_id ? customers.findById(merchantId, order.customer_id) : null,
+  ]);
+
+  return {
+    order: {
+      id: order.public_id,
+      object: "order",
+      status: order.status,
+      livemode: order.livemode,
+      kind: order.kind,
+      currency: order.currency,
+      amount_cents: order.amount_cents,
+      discount_cents: order.discount_cents,
+      coupon: order.coupon_code,
+      payment_method: order.payment_method,
+      installments: order.installments,
+      card_brand: order.card_brand,
+      card_last4: order.card_last4,
+      gateway: order.gateway,
+      refusal_reason: order.refusal_reason,
+      external_reference: order.external_reference,
+      metadata: catalog.parseMetadata(order.metadata),
+      paid_at: order.paid_at,
+      refunded_at: order.refunded_at,
+      created_at: order.created_at,
+      items: items.map((item) => ({
+        kind: item.kind,
+        description: item.description,
+        quantity: item.quantity,
+        unit_amount_cents: item.unit_amount_cents,
+        amount_cents: item.amount_cents,
+      })),
+    },
+    customer: customers.toApi(customer),
+  };
+}
+
+async function emitOrderEvent(merchantId, order, type) {
+  try {
+    const data = await toEventPayload(merchantId, order);
+    const event = await events.record(merchantId, type, data, { livemode: order.livemode });
+    await webhooksOut.enqueue(merchantId, event);
+  } catch (err) {
+    // The sale already happened. Failing to announce it must not undo it, and
+    // the event log is the backstop that lets it be replayed.
+    console.error(`[orders] Could not emit ${type} for ${order.public_id}:`, err && err.message);
+  }
+}
+
+async function emitSessionEvent(merchantId, session, type, order = null) {
+  try {
+    const data = {
+      session: sessions.toApi(session),
+      order: order ? { id: order.public_id, status: order.status } : null,
+    };
+    const event = await events.record(merchantId, type, data, { livemode: session.livemode });
+    await webhooksOut.enqueue(merchantId, event);
+  } catch (err) {
+    console.error(`[orders] Could not emit ${type}:`, err && err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// API and page shapes
+// ---------------------------------------------------------------------------
+
+function toApi(order, { items = null, customer = null } = {}) {
+  if (!order) return null;
+  const body = {
+    id: order.public_id,
+    object: "order",
+    livemode: order.livemode,
+    status: order.status,
+    kind: order.kind,
+    currency: order.currency,
+    amount_cents: order.amount_cents,
+    discount_cents: order.discount_cents,
+    coupon: order.coupon_code,
+    payment_method: order.payment_method,
+    installments: order.installments,
+    card_brand: order.card_brand,
+    card_last4: order.card_last4,
+    gateway: order.gateway,
+    refusal_reason: order.refusal_reason,
+    external_reference: order.external_reference,
+    metadata: catalog.parseMetadata(order.metadata),
+    paid_at: order.paid_at,
+    refunded_at: order.refunded_at,
+    created_at: order.created_at,
+  };
+  if (items) {
+    body.items = items.map((item) => ({
+      kind: item.kind,
+      description: item.description,
+      quantity: item.quantity,
+      unit_amount_cents: item.unit_amount_cents,
+      amount_cents: item.amount_cents,
+    }));
+  }
+  if (customer) body.customer = customers.toApi(customer);
+  return body;
+}
+
+// What the waiting page polls. Deliberately narrow: a page the buyer can see
+// gets the state and the payment artefacts, and nothing else.
+function toStatusView(order, { locale = "pt-BR" } = {}) {
+  const pt = String(locale).toLowerCase().startsWith("pt");
+  return {
+    id: order.public_id,
+    status: order.status,
+    payment_method: order.payment_method,
+    currency: order.currency,
+    amount_cents: order.amount_cents,
+    amount_formatted: money.formatMoney(order.amount_cents, order.currency, locale),
+    installments: order.installments,
+    refusal_reason: order.refusal_reason,
+    pix: order.pix_copy_paste
+      ? {
+          copy_paste: order.pix_copy_paste,
+          qr_base64: order.pix_qr_base64,
+          expires_at: order.pix_expires_at,
+        }
+      : null,
+    boleto: order.boleto_url
+      ? { url: order.boleto_url, barcode: order.boleto_barcode, due_date: order.boleto_due_date }
+      : null,
+    message:
+      order.status === "paid"
+        ? pt
+          ? "Pagamento confirmado."
+          : "Payment confirmed."
+        : order.status === "refused"
+        ? order.refusal_reason || (pt ? "O pagamento não foi autorizado." : "The payment was not authorized.")
+        : null,
+  };
+}
+
+module.exports = {
+  STATUSES,
+  ALLOWED_TRANSITIONS,
+  TERMINAL_PAID,
+  findById,
+  findByPublicId,
+  findByCharge,
+  findByToken,
+  itemsOf,
+  list,
+  createFromSession,
+  validateBuyer,
+  validateCard,
+  maxInstallmentsForItems,
+  markStatus,
+  maybeStartSubscription,
+  reconcile,
+  toEventPayload,
+  emitOrderEvent,
+  emitSessionEvent,
+  toApi,
+  toStatusView,
+};

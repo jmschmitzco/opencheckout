@@ -1,0 +1,40 @@
+<%- include("partials/head", { title: "Checkout closed", theme, themeStyle, webfontHref, locale }) %>
+
+<% const pt = String(locale).toLowerCase().startsWith("pt"); %>
+<% const t = (en, br) => (pt ? br : en); %>
+
+<main class="oc-page oc-page--single">
+  <section class="oc-panel oc-panel--message">
+    <%- include("partials/brand", { theme, merchant }) %>
+
+    <h1 class="oc-headline">
+      <% if (status === "expired") { %>
+        <%= t("This checkout link has expired", "Este link de pagamento expirou") %>
+      <% } else if (status === "canceled") { %>
+        <%= t("This checkout was canceled", "Este pagamento foi cancelado") %>
+      <% } else { %>
+        <%= t("This checkout is already finished", "Este pagamento já foi concluído") %>
+      <% } %>
+    </h1>
+
+    <p class="oc-subheadline">
+      <% if (status === "expired") { %>
+        <%= t("Checkout links are short lived for security. Start again to get a fresh one.",
+              "Links de pagamento duram pouco por segurança. Comece de novo para receber um novo link.") %>
+      <% } else { %>
+        <%= t("If you believe this is a mistake, get in touch.",
+              "Se você acredita que isso é um erro, fale com a gente.") %>
+      <% } %>
+    </p>
+
+    <% if (session.cancel_url) { %>
+      <p class="oc-cancel">
+        <a class="oc-button" href="<%= session.cancel_url %>"><%= t("Go back", "Voltar") %></a>
+      </p>
+    <% } %>
+
+    <%- include("partials/footer", { theme, merchant, copy }) %>
+  </section>
+</main>
+</body>
+</html>

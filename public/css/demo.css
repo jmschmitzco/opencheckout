@@ -1,0 +1,120 @@
+/* The demo's own pages. Not part of the product: these stand in for the
+   integrator's site, so they deliberately look like a plain developer page
+   rather than like the checkout. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f6f8fb;
+  --surface: #ffffff;
+  --text: #111827;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --accent: #4338ca;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0e14;
+    --surface: #141924;
+    --text: #f3f4f6;
+    --muted: #9aa3b2;
+    --border: #232a36;
+    --accent: #a5b4fc;
+  }
+}
+
+body {
+  margin: 0 auto;
+  max-width: 640px;
+  padding: 56px 20px 80px;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  margin: 36px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+p.lead {
+  margin: 0 0 28px;
+  color: var(--muted);
+}
+
+a {
+  color: var(--accent);
+}
+
+.card {
+  display: block;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.14s ease, transform 0.08s ease;
+}
+
+.card:hover {
+  border-color: var(--accent);
+}
+
+.card:active {
+  transform: translateY(1px);
+}
+
+.card strong {
+  display: block;
+  font-size: 16px;
+}
+
+.card span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.card--button {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+pre {
+  margin: 0 0 24px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-x: auto;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+p code {
+  background: rgba(127, 127, 127, 0.16);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+}

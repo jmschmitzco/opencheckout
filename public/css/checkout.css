@@ -1,0 +1,1011 @@
+/* ===========================================================================
+   OpenCheckout stylesheet.
+
+   EVERY COLOUR, RADIUS AND FONT IN HERE READS A CUSTOM PROPERTY, and the page
+   sets those properties from the merchant's theme. That is the whole white
+   label mechanism: this file never names a brand colour, so a merchant's
+   accent is not a colour we approved, it is the colour.
+
+   The fallbacks in var() are what a page with no theme at all looks like, so
+   the stylesheet is also readable on its own.
+   =========================================================================== */
+
+:root {
+  --oc-accent: #2c67c5;
+  --oc-accent-text: #ffffff;
+  --oc-accent-hover: #27599c;
+  --oc-accent-active: #224e8a;
+  --oc-accent-soft: #eaf1fb;
+  --oc-accent-ring: #a8c3e8;
+
+  --oc-page-bg: #f6f8fb;
+  --oc-surface: #ffffff;
+  --oc-text: #111827;
+  --oc-text-muted: #6b7280;
+  --oc-border: #e5e7eb;
+  --oc-success: #0f9d58;
+  --oc-danger: #d7263d;
+
+  --oc-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --oc-font-size: 16px;
+  --oc-radius-card: 16px;
+  --oc-radius-control: 10px;
+  --oc-radius-button: 10px;
+  --oc-logo-height: 28px;
+
+  /* Derived once, so no component re-invents a shadow. */
+  --oc-shadow-input: 0 1px 1px rgba(16, 24, 40, 0.04), 0 2px 5px rgba(16, 24, 40, 0.05);
+  --oc-shadow-panel: 0 1px 2px rgba(16, 24, 40, 0.04), 0 12px 32px rgba(16, 24, 40, 0.07);
+  --oc-gap: 16px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* The theme's font size applies to the controls, not the whole document, so
+     a merchant raising it does not reflow every label. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--oc-page-bg);
+  color: var(--oc-text);
+  font-family: var(--oc-font);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A merchant may ship a dark theme by setting the colour tokens. This block
+   only covers the case where they asked for "auto" and the visitor's system
+   says dark, and it does nothing when the merchant chose explicitly. */
+@media (prefers-color-scheme: dark) {
+  html[data-color-scheme="auto"] body {
+    --oc-page-bg: #0b0e14;
+    --oc-surface: #141924;
+    --oc-text: #f3f4f6;
+    --oc-text-muted: #9aa3b2;
+    --oc-border: #232a36;
+    --oc-shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.45);
+    --oc-shadow-input: 0 1px 1px rgba(0, 0, 0, 0.3);
+    background: var(--oc-page-bg);
+    color: var(--oc-text);
+  }
+}
+
+.oc-hidden {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Layout
+   --------------------------------------------------------------------------- */
+
+.oc-topbar {
+  background: var(--oc-top-bar-bg, var(--oc-accent));
+  color: var(--oc-top-bar-text, var(--oc-accent-text));
+  padding: 10px 16px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.oc-page {
+  display: grid;
+  gap: 24px;
+  max-width: 1040px;
+  /* 16px side gutter at phone width, and no horizontal scroll at any width. */
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+}
+
+/* Split: summary beside form on a wide screen, stacked on a narrow one.
+   The summary is SECOND in the grid on desktop and first in the document,
+   which keeps reading and tab order correct while putting the form where the
+   eye lands. */
+@media (min-width: 900px) {
+  .oc-page--split {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    gap: 40px;
+  }
+  .oc-page--split .oc-summary {
+    position: sticky;
+    top: 32px;
+    order: 2;
+  }
+  .oc-page--split .oc-panel {
+    order: 1;
+  }
+}
+
+.oc-page--single,
+.oc-page--compact {
+  max-width: 520px;
+}
+
+/* Once the form is gone there is nothing to put beside the waiting card, so
+   the page collapses to one column whatever template it started as. */
+.oc-page--waiting {
+  max-width: 520px;
+}
+@media (min-width: 900px) {
+  .oc-page--waiting {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Framed by the embed widget: the host page already provides the backdrop and
+   the padding, so the page inside drops its own. */
+.oc-page--framed {
+  padding-top: 20px;
+  padding-bottom: 32px;
+  max-width: 100%;
+}
+
+.oc-panel {
+  background: var(--oc-surface);
+  border: 1px solid var(--oc-border);
+  border-radius: var(--oc-radius-card);
+  box-shadow: var(--oc-shadow-panel);
+  padding: 28px;
+}
+
+@media (max-width: 560px) {
+  .oc-page {
+    padding: 16px 16px 48px;
+  }
+  .oc-panel {
+    padding: 20px;
+  }
+}
+
+.oc-panel--message {
+  text-align: center;
+}
+
+.oc-panel__head {
+  margin-bottom: 24px;
+}
+
+.oc-headline {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.oc-subheadline {
+  margin: 0;
+  color: var(--oc-text-muted);
+  font-size: 15px;
+}
+
+.oc-compact-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 16px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--oc-border);
+  font-size: 15px;
+}
+.oc-compact-total strong {
+  font-size: 20px;
+}
+
+/* ---------------------------------------------------------------------------
+   Brand
+   --------------------------------------------------------------------------- */
+
+.oc-brand {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  min-height: var(--oc-logo-height);
+}
+
+.oc-brand__logo {
+  height: var(--oc-logo-height);
+  width: auto;
+  /* A logo of unknown proportions must not stretch the layout. */
+  max-width: 220px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.oc-brand__name {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* ---------------------------------------------------------------------------
+   Order summary
+   --------------------------------------------------------------------------- */
+
+.oc-summary {
+  background: transparent;
+}
+
+.oc-summary__collapse {
+  border: 1px solid var(--oc-border);
+  border-radius: var(--oc-radius-card);
+  background: var(--oc-surface);
+  padding: 20px;
+}
+
+.oc-summary__toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  /* The default marker is a different shape in every browser. */
+  list-style: none;
+}
+.oc-summary__toggle::-webkit-details-marker {
+  display: none;
+}
+
+.oc-summary__peek {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+/* On a wide screen the summary is always open and the toggle is just a
+   heading: collapsing it saves nothing there. */
+@media (min-width: 900px) {
+  .oc-summary__toggle {
+    cursor: default;
+    pointer-events: none;
+  }
+  .oc-summary__peek {
+    display: none;
+  }
+}
+
+.oc-items {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.oc-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.oc-item__image {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid var(--oc-border);
+  object-fit: cover;
+  flex: none;
+}
+
+.oc-item__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.oc-item__name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.oc-item__meta {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--oc-text-muted);
+}
+
+.oc-item__price {
+  flex: none;
+  text-align: right;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.oc-item__compare {
+  display: block;
+  color: var(--oc-text-muted);
+  font-size: 13px;
+  text-decoration-thickness: 1px;
+}
+
+.oc-totals {
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--oc-border);
+  display: grid;
+  gap: 8px;
+}
+
+.oc-totals__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--oc-text-muted);
+}
+.oc-totals__row dt,
+.oc-totals__row dd {
+  margin: 0;
+}
+.oc-totals__row dd {
+  font-variant-numeric: tabular-nums;
+}
+
+.oc-totals__row--discount {
+  color: var(--oc-success);
+}
+
+.oc-totals__row--total {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--oc-border);
+  color: var(--oc-text);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.oc-chip {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--oc-accent-soft);
+  color: var(--oc-accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+.oc-chip:empty {
+  display: none;
+}
+
+.oc-chip--past_due,
+.oc-chip--unpaid {
+  background: color-mix(in srgb, var(--oc-danger) 12%, transparent);
+  color: var(--oc-danger);
+}
+.oc-chip--canceled {
+  background: var(--oc-border);
+  color: var(--oc-text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Coupon
+   --------------------------------------------------------------------------- */
+
+.oc-coupon {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--oc-border);
+}
+
+.oc-coupon__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--oc-text-muted);
+}
+
+.oc-coupon__row {
+  display: flex;
+  gap: 8px;
+}
+.oc-coupon__row .oc-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Form
+   --------------------------------------------------------------------------- */
+
+.oc-form {
+  display: grid;
+  gap: 24px;
+}
+
+.oc-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--oc-gap);
+}
+
+.oc-legend {
+  padding: 0;
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--oc-text-muted);
+}
+
+.oc-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 420px) {
+  .oc-row {
+    grid-template-columns: 1fr;
+  }
+}
+.oc-field--narrow {
+  max-width: 100%;
+}
+
+.oc-field {
+  position: relative;
+}
+
+.oc-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--oc-border);
+  border-radius: var(--oc-radius-control);
+  background: var(--oc-surface);
+  color: var(--oc-text);
+  /* NEVER below 16px. Mobile Safari zooms the whole page when it focuses a
+     field with a smaller font, which jumps the layout mid-typing, on the one
+     page where that is least acceptable. */
+  font-size: var(--oc-font-size);
+  font-family: inherit;
+  box-shadow: var(--oc-shadow-input);
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+  appearance: none;
+}
+
+.oc-input:focus {
+  outline: none;
+  border-color: var(--oc-accent);
+  /* The focus ring derives from the merchant's accent. Deriving it from a
+     fixed token is how a custom colour quietly turns back into ours the
+     moment the field is focused. */
+  box-shadow: 0 0 0 3px var(--oc-accent-ring);
+}
+
+.oc-input[aria-invalid="true"] {
+  border-color: var(--oc-danger);
+}
+.oc-input[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--oc-danger) 28%, transparent);
+}
+
+.oc-input::placeholder {
+  color: transparent;
+}
+
+.oc-select {
+  padding-right: 38px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 18px) 21px, calc(100% - 13px) 21px;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+/* The floating label.
+   It needs the input BEFORE the label in the document so :placeholder-shown
+   can drive the sibling, and a placeholder of a single space so an untouched
+   field is distinguishable from a filled one. The `for` attribute keeps the
+   association, so document order does not change what a screen reader reads. */
+.oc-field--float .oc-input {
+  padding-top: 18px;
+  padding-bottom: 2px;
+}
+
+.oc-field--float .oc-label {
+  position: absolute;
+  left: 15px;
+  top: 14px;
+  font-size: var(--oc-font-size);
+  color: var(--oc-text-muted);
+  pointer-events: none;
+  transform-origin: left top;
+  transition: transform 0.14s ease, color 0.14s ease;
+}
+
+.oc-field--float .oc-input:focus + .oc-label,
+.oc-field--float .oc-input:not(:placeholder-shown) + .oc-label {
+  transform: translateY(-9px) scale(0.75);
+}
+
+.oc-field--float .oc-input:focus + .oc-label {
+  color: var(--oc-accent);
+}
+
+.oc-label--static {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--oc-text-muted);
+}
+
+.oc-field__error {
+  margin: 5px 0 0;
+  min-height: 0;
+  font-size: 13px;
+  color: var(--oc-danger);
+}
+.oc-field__error:empty {
+  display: none;
+}
+
+.oc-form__error {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--oc-radius-control);
+  background: color-mix(in srgb, var(--oc-danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--oc-danger) 30%, transparent);
+  color: var(--oc-danger);
+  font-size: 14px;
+}
+.oc-form__error:empty {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Payment methods
+   --------------------------------------------------------------------------- */
+
+.oc-methods {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 10px;
+}
+@media (max-width: 480px) {
+  .oc-methods {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+  }
+}
+
+.oc-method {
+  display: block;
+  cursor: pointer;
+}
+
+.oc-method__input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.oc-method__face {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--oc-border);
+  border-radius: var(--oc-radius-control);
+  background: var(--oc-surface);
+  font-size: 15px;
+  font-weight: 500;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.oc-method__input:checked + .oc-method__face {
+  border-color: var(--oc-accent);
+  background: var(--oc-accent-soft);
+}
+
+/* The focus ring goes on the visible face, because the real radio is hidden.
+   :focus-visible rather than :focus so a mouse click does not leave a ring. */
+.oc-method__input:focus-visible + .oc-method__face {
+  box-shadow: 0 0 0 3px var(--oc-accent-ring);
+}
+
+.oc-method__label {
+  flex: 1 1 auto;
+}
+
+.oc-method__check {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--oc-border);
+  flex: none;
+  position: relative;
+}
+
+.oc-method__input:checked + .oc-method__face .oc-method__check {
+  border-color: var(--oc-accent);
+  background: var(--oc-accent);
+}
+.oc-method__input:checked + .oc-method__face .oc-method__check::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--oc-accent-text);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Method marks, drawn in CSS. An icon font or an SVG sprite would be another
+   request on the page where every millisecond is measured in conversion. */
+.oc-method__icon {
+  width: 22px;
+  height: 16px;
+  flex: none;
+  border-radius: 3px;
+  background: currentColor;
+  opacity: 0.22;
+}
+.oc-method__icon[data-oc-icon="pix"] {
+  border-radius: 4px;
+  transform: rotate(45deg) scale(0.8);
+}
+.oc-method__icon[data-oc-icon="boleto"] {
+  background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 4px);
+  opacity: 0.5;
+}
+
+.oc-method-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--oc-text-muted);
+}
+
+/* The card fields read as one group, because they are one thing. */
+.oc-card-group {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--oc-border);
+  border-radius: var(--oc-radius-control);
+  background: color-mix(in srgb, var(--oc-text) 2%, transparent);
+}
+
+.oc-field--card .oc-input {
+  padding-right: 56px;
+}
+
+.oc-card-brand {
+  position: absolute;
+  right: 12px;
+  top: 15px;
+  height: 18px;
+  min-width: 28px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--oc-border);
+  color: var(--oc-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.oc-card-brand:empty {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Buttons
+   --------------------------------------------------------------------------- */
+
+.oc-button,
+.oc-submit {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: var(--oc-radius-button);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.08s ease;
+}
+
+.oc-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  padding: 0 18px;
+  background: var(--oc-accent);
+  color: var(--oc-accent-text);
+  text-decoration: none;
+}
+.oc-button:hover {
+  background: var(--oc-accent-hover);
+}
+.oc-button:active {
+  background: var(--oc-accent-active);
+}
+
+.oc-button--ghost {
+  background: var(--oc-surface);
+  border-color: var(--oc-border);
+  color: var(--oc-text);
+  font-weight: 500;
+}
+.oc-button--ghost:hover {
+  background: color-mix(in srgb, var(--oc-text) 4%, transparent);
+}
+
+.oc-submit {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 52px;
+  background: var(--oc-accent);
+  color: var(--oc-accent-text);
+  font-size: 16px;
+}
+.oc-submit:hover:not(:disabled) {
+  background: var(--oc-accent-hover);
+}
+.oc-submit:active:not(:disabled) {
+  background: var(--oc-accent-active);
+  transform: translateY(1px);
+}
+.oc-submit:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--oc-accent-ring);
+}
+.oc-submit:disabled {
+  cursor: progress;
+  opacity: 0.85;
+}
+
+.oc-submit__amount {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+/* While submitting, the label and amount go and the spinner comes. The button
+   keeps its width, so nothing moves under the cursor. */
+.oc-submit[data-loading="true"] .oc-submit__label,
+.oc-submit[data-loading="true"] .oc-submit__amount {
+  visibility: hidden;
+}
+.oc-submit[data-loading="true"] .oc-spinner {
+  display: block;
+}
+
+.oc-spinner {
+  display: none;
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid color-mix(in srgb, var(--oc-accent-text) 35%, transparent);
+  border-top-color: var(--oc-accent-text);
+  border-radius: 999px;
+  animation: oc-spin 0.7s linear infinite;
+}
+
+.oc-spinner--inline {
+  display: inline-block;
+  position: static;
+  width: 14px;
+  height: 14px;
+  border-color: color-mix(in srgb, var(--oc-text) 20%, transparent);
+  border-top-color: var(--oc-accent);
+  vertical-align: -2px;
+}
+
+@keyframes oc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oc-spinner {
+    animation-duration: 2s;
+  }
+  .oc-input,
+  .oc-method__face,
+  .oc-button,
+  .oc-submit,
+  .oc-field--float .oc-label {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Badges and footer
+   --------------------------------------------------------------------------- */
+
+.oc-secure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--oc-text-muted);
+}
+
+.oc-secure__icon {
+  width: 11px;
+  height: 14px;
+  flex: none;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  position: relative;
+}
+.oc-secure__icon::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid currentColor;
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  transform: translateX(-50%);
+}
+
+.oc-support,
+.oc-cancel {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--oc-text-muted);
+}
+
+.oc-cancel a {
+  color: var(--oc-text-muted);
+}
+
+.oc-footer {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--oc-border);
+  display: grid;
+  gap: 6px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--oc-text-muted);
+}
+.oc-footer p {
+  margin: 0;
+}
+.oc-footer a {
+  color: inherit;
+}
+.oc-footer__credit {
+  opacity: 0.75;
+}
+
+/* ---------------------------------------------------------------------------
+   Waiting screen
+   --------------------------------------------------------------------------- */
+
+.oc-waiting__card,
+.oc-pix,
+.oc-boleto {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  text-align: center;
+}
+
+.oc-waiting__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.oc-waiting__text {
+  margin: 0;
+  color: var(--oc-text-muted);
+  font-size: 14px;
+}
+
+.oc-pix {
+  width: 100%;
+}
+
+.oc-pix__qr {
+  width: 220px;
+  height: 220px;
+  padding: 10px;
+  background: #ffffff;
+  border: 1px solid var(--oc-border);
+  border-radius: 12px;
+  /* A QR code must stay crisp. Smoothing a scaled one can make it unreadable
+     to a phone camera, which turns a working payment into a dead end. */
+  image-rendering: pixelated;
+}
+
+.oc-pix .oc-coupon__row,
+.oc-pix .oc-label--static {
+  width: 100%;
+  text-align: left;
+}
+
+.oc-waiting__barcode {
+  margin: 0;
+  font-family: var(--oc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  color: var(--oc-text-muted);
+  word-break: break-all;
+}
+
+.oc-waiting__status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--oc-text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Portal
+   --------------------------------------------------------------------------- */
+
+.oc-sub {
+  padding: 18px;
+  border: 1px solid var(--oc-border);
+  border-radius: var(--oc-radius-control);
+  margin-bottom: 14px;
+}
+
+.oc-sub__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.oc-sub__amount {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.oc-sub__interval {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--oc-text-muted);
+}
+
+.oc-sub__actions {
+  margin-top: 14px;
+}
+
+.oc-sub__invoices {
+  margin-top: 14px;
+  font-size: 14px;
+}
+.oc-sub__invoices summary {
+  cursor: pointer;
+  color: var(--oc-text-muted);
+}

@@ -1,0 +1,79 @@
+<%- include("partials/head", { title: "Payment in progress", theme, themeStyle, webfontHref, locale }) %>
+
+<% const pt = String(locale).toLowerCase().startsWith("pt"); %>
+<% const t = (en, br) => (pt ? br : en); %>
+
+<%#
+  The page a buyer lands on when they reopen a checkout link whose order is
+  still waiting. It is not the same as the in-page waiting panel: this one is
+  rendered fresh, from the stored order, because the buyer came back later,
+  possibly on another device.
+%>
+<main class="oc-page oc-page--single">
+  <section class="oc-panel">
+    <%- include("partials/brand", { theme, merchant }) %>
+
+    <header class="oc-panel__head">
+      <h1 class="oc-headline">
+        <%= orderView.status === "pending"
+              ? t("Waiting for your payment", "Aguardando o seu pagamento")
+              : t("Payment status", "Situação do pagamento") %>
+      </h1>
+      <p class="oc-subheadline">
+        <%= orderView.amount_formatted %>
+        <% if (orderView.payment_method === "pix") { %> &middot; Pix<% } %>
+        <% if (orderView.payment_method === "boleto") { %> &middot; Boleto<% } %>
+      </p>
+    </header>
+
+    <% if (orderView.pix) { %>
+      <div class="oc-pix">
+        <% if (orderView.pix.qr_base64) { %>
+          <img class="oc-pix__qr"
+               src="data:image/png;base64,<%= orderView.pix.qr_base64 %>"
+               alt="<%= t("Pix QR code", "QR code do Pix") %>" width="220" height="220">
+        <% } %>
+        <label class="oc-label oc-label--static" for="oc-pix-code">
+          <%= t("Or copy the code", "Ou copie o código") %>
+        </label>
+        <div class="oc-coupon__row">
+          <input class="oc-input" id="oc-pix-code" type="text" readonly
+                 value="<%= orderView.pix.copy_paste %>" data-oc-pix-code>
+          <button class="oc-button oc-button--ghost" type="button" data-oc-copy-pix>
+            <%= t("Copy", "Copiar") %>
+          </button>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (orderView.boleto) { %>
+      <div class="oc-boleto">
+        <a class="oc-button" href="<%= orderView.boleto.url %>" target="_blank" rel="noopener noreferrer">
+          <%= t("Open the bank slip", "Abrir o boleto") %>
+        </a>
+        <p class="oc-waiting__barcode"><%= orderView.boleto.barcode %></p>
+      </div>
+    <% } %>
+
+    <p class="oc-waiting__status">
+      <% if (orderView.status === "pending") { %>
+        <span class="oc-spinner oc-spinner--inline" aria-hidden="true"></span>
+        <span data-oc-poll-status><%= t("Waiting for confirmation", "Aguardando a confirmação") %></span>
+      <% } else { %>
+        <span><%= orderView.message || orderView.status %></span>
+      <% } %>
+    </p>
+
+    <%- include("partials/footer", { theme, merchant, copy }) %>
+  </section>
+</main>
+
+<script type="application/json" id="oc-config"><%- JSON.stringify({
+  sessionId: session.public_id,
+  clientSecret: session.client_secret,
+  locale,
+  resume: { orderId: order.public_id, token: order.checkout_token },
+}) %></script>
+<script src="/static/js/checkout.js" defer></script>
+</body>
+</html>

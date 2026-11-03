@@ -1,0 +1,14 @@
+<%#
+  The merchant's mark. Falls back to their name as text, which is what makes a
+  brand new installation look finished rather than broken.
+%>
+<div class="oc-brand">
+  <% if (theme.logo_url) { %>
+    <img class="oc-brand__logo"
+         src="<%= theme.logo_url %>"
+         alt="<%= theme.brand_name || merchant.name %>"
+         height="<%= theme.logo_height %>">
+  <% } else { %>
+    <span class="oc-brand__name"><%= theme.brand_name || merchant.name %></span>
+  <% } %>
+</div>

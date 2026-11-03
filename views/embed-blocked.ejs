@@ -1,0 +1,38 @@
+<%#
+  Shown inside the widget when the merchant has not declared which origins may
+  frame their checkout.
+
+  It carries no form, no amount, no brand and no secret, which is why it is
+  allowed to be framed from anywhere while the real checkout is not. Without
+  it, the widget is an empty white box and the integrator has only a console
+  message to go on.
+%>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Embedding is not enabled</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/css/checkout.css">
+</head>
+<body>
+  <main class="oc-page oc-page--single oc-page--framed">
+    <section class="oc-panel oc-panel--message">
+      <h1 class="oc-headline">Embedding is not enabled yet</h1>
+      <p class="oc-subheadline">
+        This checkout has no allowed origins, so no page may frame it. Add the domains
+        your site runs on to the merchant's allowed origins, then try again.
+      </p>
+      <p class="oc-method-note">
+        Until then the checkout works as a redirect: send the buyer to its URL instead
+        of opening the widget.
+      </p>
+      <p class="oc-cancel">
+        <a class="oc-button" href="<%= checkoutUrl %>" target="_top">Open the checkout</a>
+      </p>
+    </section>
+  </main>
+</body>
+</html>

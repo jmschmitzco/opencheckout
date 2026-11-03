@@ -1,0 +1,24 @@
+<%#
+  The plain error page. No theme here on purpose: it is rendered on requests
+  where no merchant could be resolved, so there is no brand to wear, and it
+  must never depend on a lookup that is exactly what failed.
+%>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %></title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/css/checkout.css">
+</head>
+<body>
+  <main class="oc-page oc-page--single">
+    <section class="oc-panel oc-panel--message">
+      <h1 class="oc-headline"><%= title %></h1>
+      <p class="oc-subheadline"><%= message %></p>
+    </section>
+  </main>
+</body>
+</html>

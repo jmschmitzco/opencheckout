@@ -1,0 +1,43 @@
+{
+  "name": "opencheckout",
+  "version": "0.1.0",
+  "description": "Open source, white label checkout for SaaS. Create a checkout session from your backend, send the customer to a branded page, get a signed webhook back.",
+  "license": "MIT",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "demo": "node src/demo/demo-server.js",
+    "db:migrate": "node db/migrate.js",
+    "db:seed": "node db/seed.js",
+    "test": "jest --runInBand"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "checkout",
+    "payments",
+    "saas",
+    "billing",
+    "subscriptions",
+    "white-label",
+    "self-hosted",
+    "open-source"
+  ],
+  "dependencies": {
+    "cookie-session": "^2.1.0",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "pg": "^8.12.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "pg-mem": "^2.8.1",
+    "supertest": "^6.3.4"
+  }
+}

@@ -1,0 +1,49 @@
+<%#
+  Shared document head.
+  Expects: title, theme, themeStyle, webfontHref, and optional extraCss.
+
+  The theme arrives as a style attribute of CSS custom properties, already
+  validated by services/branding.js. That is why the content policy can forbid
+  inline <script> and still allow inline style: every value in that attribute
+  is a hex colour, an integer or a name from a closed list.
+%>
+<!doctype html>
+<html lang="<%= (typeof locale !== 'undefined' && locale) ? locale : 'en' %>"
+      data-color-scheme="<%= theme.color_scheme %>">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title><%= title %></title>
+
+  <%# A checkout page has no business being indexed or previewed. %>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="origin">
+
+  <% if (theme.favicon_url) { %>
+    <link rel="icon" href="<%= theme.favicon_url %>">
+  <% } else { %>
+    <link rel="icon" href="data:,">
+  <% } %>
+
+  <% if (webfontHref) { %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="<%= webfontHref %>">
+  <% } %>
+
+  <link rel="stylesheet" href="/static/css/checkout.css">
+  <% if (typeof extraCss !== 'undefined' && extraCss) { %>
+    <link rel="stylesheet" href="<%= extraCss %>">
+  <% } %>
+
+  <% if (theme.custom_css) { %>
+    <%#
+      Raw CSS, and only from an installation that declared itself single
+      tenant (merchants.allow_custom_css). On a shared installation
+      branding.js drops this field before it ever gets here, because CSS from
+      one merchant could draw a fake form over a real one.
+    %>
+    <style><%- theme.custom_css %></style>
+  <% } %>
+</head>
+<body style="<%= themeStyle %>">

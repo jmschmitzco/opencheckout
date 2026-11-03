@@ -1,0 +1,89 @@
+<%- include("partials/head", { title: "Your subscription", theme, themeStyle, webfontHref, locale: "pt-BR" }) %>
+
+<main class="oc-page oc-page--single">
+  <section class="oc-panel">
+    <%- include("partials/brand", { theme, merchant }) %>
+
+    <header class="oc-panel__head">
+      <h1 class="oc-headline">Your account</h1>
+      <p class="oc-subheadline"><%= overview.customer.email %></p>
+    </header>
+
+    <% if (!overview.subscriptions.length) { %>
+      <p class="oc-method-note">You have no active subscription.</p>
+    <% } %>
+
+    <% overview.subscriptions.forEach(function (subscription) { %>
+      <article class="oc-sub" data-oc-subscription="<%= subscription.id %>">
+        <header class="oc-sub__head">
+          <div>
+            <p class="oc-sub__amount">
+              <%= format(subscription.amount_cents, subscription.currency) %>
+              <span class="oc-sub__interval">
+                / <%= subscription.interval_count > 1 ? subscription.interval_count + " " : "" %><%= subscription.interval %>
+              </span>
+            </p>
+            <p class="oc-item__meta">
+              <% if (subscription.status === "trialing") { %>
+                Trial until <%= new Date(subscription.trial_end).toLocaleDateString() %>
+              <% } else if (subscription.cancel_at_period_end) { %>
+                Ends on <%= new Date(subscription.current_period_end).toLocaleDateString() %>
+              <% } else if (subscription.current_period_end) { %>
+                Renews on <%= new Date(subscription.current_period_end).toLocaleDateString() %>
+              <% } %>
+            </p>
+          </div>
+          <span class="oc-chip oc-chip--<%= subscription.status %>"><%= subscription.status %></span>
+        </header>
+
+        <% if (subscription.status !== "canceled") { %>
+          <div class="oc-sub__actions">
+            <% if (subscription.cancel_at_period_end) { %>
+              <button class="oc-button oc-button--ghost" type="button" data-oc-resume="<%= subscription.id %>">
+                Keep my subscription
+              </button>
+            <% } else { %>
+              <button class="oc-button oc-button--ghost" type="button" data-oc-cancel="<%= subscription.id %>">
+                Cancel at period end
+              </button>
+            <% } %>
+          </div>
+        <% } %>
+
+        <% if (subscription.invoices.length) { %>
+          <details class="oc-sub__invoices">
+            <summary>Invoices</summary>
+            <ul class="oc-items">
+              <% subscription.invoices.forEach(function (invoice) { %>
+                <li class="oc-item">
+                  <div class="oc-item__body">
+                    <p class="oc-item__name">
+                      <%= new Date(invoice.period_start).toLocaleDateString() %>
+                      to <%= new Date(invoice.period_end).toLocaleDateString() %>
+                    </p>
+                    <p class="oc-item__meta"><%= invoice.status %></p>
+                  </div>
+                  <div class="oc-item__price">
+                    <%= format(invoice.amount_cents, invoice.currency) %>
+                  </div>
+                </li>
+              <% }); %>
+            </ul>
+          </details>
+        <% } %>
+      </article>
+    <% }); %>
+
+    <p class="oc-form__error" data-oc-portal-error role="alert" aria-live="assertive"></p>
+
+    <% if (returnUrl) { %>
+      <p class="oc-cancel"><a href="<%= returnUrl %>">Back to <%= merchant.name %></a></p>
+    <% } %>
+
+    <%- include("partials/footer", { theme, merchant, copy }) %>
+  </section>
+</main>
+
+<script src="/static/js/portal.js" defer></script>
+</body>
+</html>
