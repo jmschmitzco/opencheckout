@@ -112,15 +112,23 @@ consulta nossa ao gateway**. O navegador pode mentir.
 
 ### O que ainda falta
 
-Está tudo anotado em `docs/ROADMAP.md`. Os três principais:
+Está tudo anotado em `docs/ROADMAP.md`. Os quatro principais, em ordem de
+importância:
 
-1. **Os adaptadores de gateway de verdade.** Hoje existe o contrato
-   (`src/gateways/contract.md`) e o gateway simulado. Asaas, Pagar.me, Mercado
-   Pago e PayPal ainda precisam ser escritos, e dá para aproveitar bastante do
-   código da Mitzshop, que já está rodando em produção.
-2. **O painel da empresa cliente.** Hoje tudo é por API. Falta a tela onde ela
+1. **Os adaptadores de gateway de verdade.** Esta é a maior. Hoje tudo roda no
+   gateway simulado. O contrato está escrito (`src/gateways/contract.md`) e o
+   simulado é o exemplo completo dele, mas Asaas, Pagar.me, Mercado Pago e
+   PayPal ainda precisam ser escritos. Dá para aproveitar bastante do código da
+   Mitzshop, que já está em produção com os quatro. Até isso ficar pronto, o
+   projeto é uma máquina completa rodando a seco.
+2. **Order bump e upsell pós-compra.** Você pediu na primeira versão e eu não
+   entreguei. A tabela `offers` está no banco, mas ainda não existe a caixinha
+   dentro do checkout nem a tela de um clique depois do pagamento. A metade
+   difícil já está feita, porque cobrar com o cartão salvo é o mesmo caminho
+   que a renovação de assinatura usa.
+3. **O painel da empresa cliente.** Hoje tudo é por API. Falta a tela onde ela
    cola a chave do gateway, escolhe as cores e vê as vendas.
-3. **Troca de plano com cobrança proporcional.** Decidi não fazer pela metade:
+4. **Troca de plano com cobrança proporcional.** Decidi não fazer pela metade:
    calcular errado a diferença de um plano para outro vira pedido de
    reembolso. Hoje trocar de plano encerra uma assinatura e começa outra.
 
