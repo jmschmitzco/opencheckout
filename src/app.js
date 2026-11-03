@@ -141,6 +141,7 @@ app.use("/", require("./routes/embed"));
 app.use("/", require("./routes/payment-return").router);
 app.use("/", require("./routes/funnel").router);
 app.use("/", require("./routes/hosted-checkout").router);
+app.use("/dashboard", require("./routes/dashboard").router);
 app.use("/", require("./routes/portal"));
 
 // The demo's own pages, which mint sessions with no API key. Mounted here,

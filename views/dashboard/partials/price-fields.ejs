@@ -1,0 +1,67 @@
+<%#
+  The price half of a form. Shared by "new product" and "add another price",
+  so the two can never drift into asking for different things.
+
+  `prefix` only exists to keep the ids unique when the partial appears more
+  than once on a page, which it does.
+%>
+<div class="d-row">
+  <div>
+    <label class="d-label" for="amount-<%= prefix %>">Price</label>
+    <input class="d-input" id="amount-<%= prefix %>" name="amount" type="text"
+           inputmode="decimal" placeholder="97,00">
+  </div>
+  <div>
+    <label class="d-label" for="currency-<%= prefix %>">Currency</label>
+    <select class="d-input d-select" id="currency-<%= prefix %>" name="currency">
+      <% currencies.forEach(function (code) { %>
+        <option value="<%= code %>" <%= code === "BRL" ? "selected" : "" %>><%= code %></option>
+      <% }); %>
+    </select>
+  </div>
+</div>
+
+<div class="d-row">
+  <div>
+    <label class="d-label" for="compare-<%= prefix %>">Compare at</label>
+    <input class="d-input" id="compare-<%= prefix %>" name="compare_at" type="text"
+           inputmode="decimal" placeholder="optional">
+    <p class="d-hint">Shown struck through. It must be higher than the price.</p>
+  </div>
+  <div>
+    <label class="d-label" for="type-<%= prefix %>">Charged</label>
+    <select class="d-input d-select" id="type-<%= prefix %>" name="type" data-d-price-type>
+      <option value="one_time">Once</option>
+      <option value="recurring">Every period</option>
+    </select>
+  </div>
+</div>
+
+<div class="d-row" data-d-recurring hidden>
+  <div>
+    <label class="d-label" for="interval-<%= prefix %>">Period</label>
+    <select class="d-input d-select" id="interval-<%= prefix %>" name="interval">
+      <option value="month">Month</option>
+      <option value="year">Year</option>
+      <option value="week">Week</option>
+      <option value="day">Day</option>
+    </select>
+  </div>
+  <div>
+    <label class="d-label" for="trial-<%= prefix %>">Free trial, days</label>
+    <input class="d-input" id="trial-<%= prefix %>" name="trial_days" type="number" min="0" max="365" value="0">
+  </div>
+</div>
+
+<div data-d-one-time>
+  <label class="d-label" for="installments-<%= prefix %>">Card instalments</label>
+  <select class="d-input d-select" id="installments-<%= prefix %>" name="max_installments">
+    <% for (let n = 1; n <= 12; n++) { %>
+      <option value="<%= n %>"><%= n === 1 ? "No instalments" : n + "x" %></option>
+    <% } %>
+  </select>
+  <p class="d-hint">
+    Brazilian card feature, and only in BRL. The checkout never offers an
+    instalment below the processor's floor, so a cheap product shows fewer.
+  </p>
+</div>

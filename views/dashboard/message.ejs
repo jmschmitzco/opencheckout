@@ -1,0 +1,11 @@
+<%- include("partials/head", { title, bare: true }) %>
+
+<main class="d-entry">
+  <div class="d-entry__card">
+    <h1 class="d-entry__title"><%= title %></h1>
+    <p class="d-entry__sub"><%= message %></p>
+    <a class="d-btn d-btn--primary d-btn--wide" href="<%= backTo %>">Go back</a>
+  </div>
+</main>
+</body>
+</html>

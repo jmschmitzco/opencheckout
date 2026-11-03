@@ -179,7 +179,18 @@ async function renderCheckout(req, res, next, { framed = false } = {}) {
     // the origins that merchant declared, and nothing else. The page outside
     // the widget may never be framed at all.
     if (framed) {
-      const origins = frameAncestorsFor(req.merchant);
+      // THE BRANDING PREVIEW frames a real checkout inside the dashboard, and
+      // it is allowed to because the request proves it belongs to the merchant
+      // whose session this is: the dashboard cookie is already signed, and it
+      // names the same merchant. Without that check, `?preview=1` would be a
+      // way for any page to ask for self framing.
+      const previewing =
+        req.query.preview === "1" &&
+        req.session &&
+        req.session.dashboard &&
+        (await dashboardOwns(req.session.dashboard.userId, req.merchantId));
+
+      const origins = previewing ? ["'self'"] : frameAncestorsFor(req.merchant);
 
       // No origin declared means nothing may frame this, which is the correct
       // default and a terrible thing to discover as an empty white box. So the
@@ -187,7 +198,7 @@ async function renderCheckout(req, res, next, { framed = false } = {}) {
       //
       // That page is framable from anywhere on purpose: it holds no form, no
       // amount, no secret and no brand. Only the real checkout is restricted.
-      if (origins.length === 1 && origins[0] === "'none'") {
+      if (!previewing && origins.length === 1 && origins[0] === "'none'") {
         allowFramingBy(res, ["*"]);
         return res.status(200).render("embed-blocked", {
           checkoutUrl: `${config.baseUrl}/c/${req.session_.public_id}?k=${req.session_.client_secret}`,
@@ -224,6 +235,18 @@ function allowFramingBy(res, origins) {
     .filter((part) => part && !/^frame-ancestors\b/i.test(part));
   parts.push(directive);
   res.set("Content-Security-Policy", parts.join(";"));
+}
+
+// Is the signed in dashboard user an owner of this merchant? Used only to
+// decide whether a preview may be framed by the dashboard itself.
+async function dashboardOwns(userId, merchantId) {
+  if (!userId || !merchantId) return false;
+  try {
+    const user = await require("../services/merchant-users").findById(userId);
+    return Boolean(user && user.merchant_id === merchantId);
+  } catch {
+    return false;
+  }
 }
 
 function frameAncestorsFor(merchant) {

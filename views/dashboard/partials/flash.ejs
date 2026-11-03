@@ -1,0 +1,20 @@
+<% if (flash) { %>
+  <%
+    // "key" is a secret shown exactly once, and it carries its own
+    // explanation after a pipe. It gets a copy button and a different colour,
+    // because walking past it means losing it.
+    const isKey = flash.kind === "key";
+    const [value, note] = isKey ? String(flash.message).split("|") : [flash.message, null];
+  %>
+  <div class="d-flash d-flash--<%= flash.kind %>" role="status">
+    <% if (isKey) { %>
+      <p class="d-flash__note"><%= note %></p>
+      <div class="d-copy">
+        <input class="d-input" type="text" readonly value="<%= value %>" data-d-copy-value>
+        <button class="d-btn d-btn--ghost" type="button" data-d-copy>Copy</button>
+      </div>
+    <% } else { %>
+      <%= flash.message %>
+    <% } %>
+  </div>
+<% } %>

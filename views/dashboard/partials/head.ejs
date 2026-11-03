@@ -1,0 +1,18 @@
+<%#
+  The dashboard shell.
+
+  It deliberately does NOT use the checkout's theme. The checkout wears the
+  merchant's brand; this is the tool they use, and a tool that changes colour
+  with the product being sold is a tool nobody learns.
+%>
+<!doctype html>
+<html lang="en" data-color-scheme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> · OpenCheckout</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body<%= typeof bare !== "undefined" && bare ? ' class="d-bare"' : "" %>>

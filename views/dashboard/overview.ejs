@@ -1,0 +1,80 @@
+<%- include("partials/open", { title, lead: `The last ${numbers.days} days.` }) %>
+
+<%#
+  THE CHECKLIST COMES FIRST, and only while something on it is undone.
+
+  The most common state of a fresh install is "looks finished, cannot charge
+  anything", because the gateway keys are the one thing nobody can do for you.
+  A dashboard that opens on an empty revenue chart does not say that.
+%>
+<% if (remaining > 0) { %>
+  <section class="d-card d-card--setup">
+    <h2 class="d-card__title">
+      Before you can take money
+      <span class="d-chip"><%= remaining %> left</span>
+    </h2>
+    <ul class="d-steps">
+      <% steps.forEach(function (step) { %>
+        <li class="d-step<%= step.done ? " is-done" : "" %>">
+          <span class="d-step__tick" aria-hidden="true"></span>
+          <div class="d-step__body">
+            <a class="d-step__title" href="<%= step.href %>"><%= step.title %></a>
+            <p class="d-step__detail"><%= step.detail %></p>
+          </div>
+        </li>
+      <% }); %>
+    </ul>
+  </section>
+<% } %>
+
+<section class="d-tiles">
+  <div class="d-tile">
+    <p class="d-tile__label">Paid</p>
+    <p class="d-tile__value"><%= fmt(numbers.paidCents, numbers.currency) %></p>
+    <p class="d-tile__note"><%= numbers.paidCount %> orders in <%= numbers.currency %></p>
+  </div>
+  <div class="d-tile">
+    <p class="d-tile__label">Waiting</p>
+    <p class="d-tile__value"><%= numbers.pendingCount %></p>
+    <p class="d-tile__note">Pix and boleto not settled yet</p>
+  </div>
+  <div class="d-tile">
+    <p class="d-tile__label">Given back</p>
+    <p class="d-tile__value"><%= fmt(numbers.refundedCents, numbers.currency) %></p>
+    <p class="d-tile__note"><%= numbers.refundedCount %> refunds and chargebacks</p>
+  </div>
+  <div class="d-tile">
+    <p class="d-tile__label">Subscriptions</p>
+    <p class="d-tile__value"><%= activeSubscriptions %></p>
+    <p class="d-tile__note">Active, trialing or past due</p>
+  </div>
+</section>
+
+<section class="d-card">
+  <h2 class="d-card__title">Latest orders</h2>
+  <% if (!recent.length) { %>
+    <p class="d-empty">
+      Nothing yet. Create a checkout session from your backend, or make a test
+      link from <a href="/dashboard/products">Products</a>.
+    </p>
+  <% } else { %>
+    <table class="d-table">
+      <thead>
+        <tr><th>Order</th><th>Buyer</th><th>Method</th><th>Status</th><th class="d-right">Amount</th></tr>
+      </thead>
+      <tbody>
+        <% recent.forEach(function (row) { %>
+          <tr>
+            <td><a class="d-mono" href="/dashboard/orders/<%= row.public_id %>"><%= row.public_id %></a></td>
+            <td><%= row.email || "-" %></td>
+            <td><%= row.payment_method || "-" %></td>
+            <td><span class="d-pill d-pill--<%= row.status %>"><%= row.status %></span></td>
+            <td class="d-right"><%= fmt(row.amount_cents, row.currency) %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } %>
+</section>
+
+<%- include("partials/close") %>

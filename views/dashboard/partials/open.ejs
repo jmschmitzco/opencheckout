@@ -1,0 +1,27 @@
+<%#
+  Opens a signed-in dashboard page: shell, navigation, heading and the flash.
+  Every page includes this and partials/close, so none of them can forget the
+  navigation or render a flash twice.
+
+  Expects: title, and optionally `lead` and `actions` (raw HTML for the
+  buttons that belong beside the heading).
+%>
+<%- include("head", { title }) %>
+
+<div class="d-shell">
+  <%- include("nav") %>
+
+  <main class="d-main">
+    <header class="d-head">
+      <div>
+        <h1 class="d-title"><%= title %></h1>
+        <% if (typeof lead !== "undefined" && lead) { %>
+          <p class="d-lead"><%= lead %></p>
+        <% } %>
+      </div>
+      <% if (typeof actions !== "undefined" && actions) { %>
+        <div class="d-head__actions"><%- actions %></div>
+      <% } %>
+    </header>
+
+    <%- include("flash") %>

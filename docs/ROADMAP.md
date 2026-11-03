@@ -20,6 +20,10 @@ different answers and an integrator deserves to know which one they got.
   authorization, and deliberately not discounted by the cart's coupon
 - Upsell and downsell: one click after payment against the saved credential,
   refresh safe, and absent entirely where the gateway cannot charge again
+- A merchant dashboard: sign in, a setup checklist that says what still blocks
+  a real sale, gateway credentials, a branding editor with a live checkout
+  preview, orders, subscriptions, customers, catalogue, offers, coupons, API
+  keys, webhook endpoints and their deliveries
 - Coupons: percentage or fixed, redemption limits, once per customer
 - Abandoned carts as events carrying a recovery link
 - Outbound webhooks: HMAC signed, retried with backoff, auto-disabled after
@@ -41,21 +45,14 @@ and a gateway-specific step before submit.
 Until then `supportedMethods` leaves card out, so the method is never offered
 through Mercado Pago rather than being offered and failing.
 
-### 2. The merchant dashboard
-
-Everything is on the API today, which is enough for a developer and not enough
-for the person who actually owns the business. Needed: paste gateway
-credentials, pick a theme, see orders and subscriptions, create coupons,
-manage webhook endpoints and read delivery failures.
-
-### 3. Refunds and disputes
+### 2. Refunds and disputes
 
 `POST /v1/orders/:id/refund`, partial and full, plus handling the dispute
 notifications the gateways send. The order statuses and the transition table
 already cover `refunded` and `chargeback`; what is missing is the route and
 the adapter calls behind it.
 
-### 4. Usage-based billing
+### 3. Usage-based billing
 
 Report usage against a subscription, bill it at period end. The pieces exist
 (ad hoc line items, the renewal loop); what is missing is a meter and the

@@ -53,6 +53,34 @@ create table if not exists merchants (
 );
 
 -- ---------------------------------------------------------------------------
+-- The people who sign in to the dashboard.
+--
+-- Email is unique across the whole installation, not per merchant: one login
+-- belongs to one business. Letting the same address belong to two merchants
+-- would mean a "which account?" step on every sign in, for a case almost
+-- nobody has.
+--
+-- failed_attempts and locked_until are the brute force brake. They live on the
+-- row rather than in memory because a restart must not clear them, and because
+-- an attacker rotating IP addresses walks straight past any per-IP limit.
+-- ---------------------------------------------------------------------------
+create table if not exists merchant_users (
+  id              serial primary key,
+  merchant_id     integer not null references merchants(id) on delete cascade,
+  email           text not null,
+  name            text,
+  password_hash   text not null,
+  role            text not null default 'owner',
+  last_login_at   timestamptz,
+  failed_attempts integer not null default 0,
+  locked_until    timestamptz,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+create unique index if not exists merchant_users_email_idx on merchant_users (email);
+create index if not exists merchant_users_merchant_idx on merchant_users (merchant_id);
+
+-- ---------------------------------------------------------------------------
 -- API keys. The full key is shown ONCE, at creation. Only the SHA-256 lands in
 -- the database, so a database leak hands out no usable key. The prefix is
 -- stored in the clear just so the owner recognises the key in the dashboard,

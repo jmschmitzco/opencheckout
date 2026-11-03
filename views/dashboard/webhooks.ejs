@@ -1,0 +1,147 @@
+<%- include("partials/open", { title, lead: "How your app finds out that money moved." }) %>
+
+<section class="d-card d-card--note">
+  <p>
+    The redirect after payment is a convenience: the buyer can close the tab,
+    refresh, or lose signal. <strong>The webhook is the authoritative answer.</strong>
+    Every delivery is signed, so verify it before you trust it.
+  </p>
+</section>
+
+<div class="d-split">
+  <div>
+    <section class="d-card">
+      <h2 class="d-card__title">Endpoints</h2>
+      <% if (!endpoints.length) { %>
+        <p class="d-empty">None yet.</p>
+      <% } else { %>
+        <table class="d-table">
+          <thead><tr><th>URL</th><th>Events</th><th></th></tr></thead>
+          <tbody>
+            <% endpoints.forEach(function (row) { %>
+              <tr<%= row.active ? "" : ' class="is-archived"' %>>
+                <td>
+                  <span class="d-mono"><%= row.url %></span>
+                  <span class="d-chip<%= row.livemode ? " d-chip--on" : " d-chip--test" %>">
+                    <%= row.livemode ? "live" : "test" %>
+                  </span>
+                  <% if (!row.active) { %>
+                    <br><small class="d-error">
+                      Turned off after <%= row.failures %> failures in a row.
+                    </small>
+                  <% } %>
+                </td>
+                <td>
+                  <small class="d-muted">
+                    <%= row.events ? row.events.split(",").join(", ") : "everything" %>
+                  </small>
+                </td>
+                <td class="d-right">
+                  <% if (!row.active) { %>
+                    <form method="post" action="/dashboard/settings/webhooks/<%= row.public_id %>/enable">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <button class="d-btn d-btn--small" type="submit">Turn back on</button>
+                    </form>
+                  <% } %>
+                  <form method="post" action="/dashboard/settings/webhooks/<%= row.public_id %>/delete"
+                        data-d-confirm="Remove this endpoint?">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <button class="d-btn d-btn--small d-btn--quiet" type="submit">Remove</button>
+                  </form>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+        <p class="d-hint">
+          A failed delivery is retried five times over about a day. An endpoint
+          that keeps failing is switched off, so one broken integration does not
+          hold up everybody else's. Turning it back on re-queues what it missed.
+        </p>
+      <% } %>
+    </section>
+
+    <section class="d-card">
+      <h2 class="d-card__title">How to verify one</h2>
+      <pre class="d-code"><code>const expected =
+  "sha256=" +
+  crypto.createHmac("sha256", process.env.WEBHOOK_SECRET)
+    .update(`${req.get("OpenCheckout-Timestamp")}.${req.rawBody}`)
+    .digest("hex");
+
+if (!crypto.timingSafeEqual(
+      Buffer.from(expected),
+      Buffer.from(req.get("OpenCheckout-Signature")))) {
+  return res.sendStatus(400);
+}
+// Reject anything more than five minutes from your own clock.</code></pre>
+      <p class="d-hint">
+        The timestamp is part of what is signed. Without checking its age, a
+        captured delivery stays valid forever.
+      </p>
+    </section>
+
+    <% if (deliveries.length) { %>
+      <section class="d-card">
+        <h2 class="d-card__title">Recent deliveries</h2>
+        <table class="d-table">
+          <thead><tr><th>Event</th><th>Status</th><th>When</th></tr></thead>
+          <tbody>
+            <% deliveries.slice(0, 10).forEach(function (row) { %>
+              <tr>
+                <td><code><%= row.event_type %></code></td>
+                <td>
+                  <span class="d-pill d-pill--<%= row.status === "delivered" ? "paid" : row.status === "failed" ? "refused" : "pending" %>">
+                    <%= row.status %>
+                  </span>
+                </td>
+                <td><small class="d-muted"><%= formatDate(row.created_at) %></small></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+        <p><a class="d-link" href="/dashboard/events">See all, and retry</a></p>
+      </section>
+    <% } %>
+  </div>
+
+  <div>
+    <section class="d-card">
+      <h2 class="d-card__title">New endpoint</h2>
+      <form class="d-form" method="post" action="/dashboard/settings/webhooks">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+        <label class="d-label" for="url">URL</label>
+        <input class="d-input d-mono" id="url" name="url" type="url" required
+               placeholder="https://yourapp.com/hooks/payments">
+        <p class="d-hint">
+          Must be reachable from the public internet. Loopback and private
+          addresses are refused, because otherwise this would be a way to make
+          our server probe its own network.
+        </p>
+
+        <label class="d-label" for="mode">Mode</label>
+        <select class="d-input d-select" id="mode" name="mode">
+          <option value="test">Test</option>
+          <option value="live">Live</option>
+        </select>
+
+        <p class="d-label">Events</p>
+        <p class="d-hint">Select none to receive everything, which is what a first integration wants.</p>
+        <% groups.forEach(function (group) { %>
+          <p class="d-group"><%= group.group %></p>
+          <% group.events.forEach(function (event) { %>
+            <label class="d-check">
+              <input type="checkbox" name="events" value="<%= event %>">
+              <span class="d-mono"><%= event %></span>
+            </label>
+          <% }); %>
+        <% }); %>
+
+        <button class="d-btn d-btn--primary d-btn--wide" type="submit">Add endpoint</button>
+      </form>
+    </section>
+  </div>
+</div>
+
+<%- include("partials/close") %>

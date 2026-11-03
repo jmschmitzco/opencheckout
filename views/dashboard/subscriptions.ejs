@@ -1,0 +1,86 @@
+<%- include("partials/open", { title, lead: `${rows.length} shown` }) %>
+
+<form class="d-filters" method="get" action="/dashboard/subscriptions">
+  <select class="d-input d-select" name="status" aria-label="Status">
+    <option value="">Any status</option>
+    <% statuses.forEach(function (one) { %>
+      <option value="<%= one %>" <%= status === one ? "selected" : "" %>><%= one %></option>
+    <% }); %>
+  </select>
+  <button class="d-btn" type="submit">Filter</button>
+  <% if (status) { %><a class="d-link" href="/dashboard/subscriptions">Clear</a><% } %>
+</form>
+
+<section class="d-card">
+  <% if (!rows.length) { %>
+    <p class="d-empty">
+      Nothing here yet. A subscription starts when a checkout session created with
+      <code>mode: "subscription"</code> is paid.
+    </p>
+  <% } else { %>
+    <table class="d-table">
+      <thead>
+        <tr><th>Customer</th><th>Plan</th><th>Status</th><th>Next</th><th class="d-right">Amount</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% rows.forEach(function (row) { %>
+          <tr>
+            <td>
+              <%= row.email || "-" %>
+              <br><small class="d-mono d-muted"><%= row.public_id %></small>
+            </td>
+            <td>
+              <%= row.product_name || "-" %>
+              <br><small class="d-muted">
+                every <%= row.interval_count > 1 ? row.interval_count + " " : "" %><%= row.interval %>
+              </small>
+            </td>
+            <td>
+              <span class="d-pill d-pill--<%= row.status %>"><%= row.status %></span>
+              <% if (entitled.indexOf(row.status) >= 0) { %>
+                <br><small class="d-muted">has access</small>
+              <% } %>
+              <% if (row.cancel_at_period_end) { %>
+                <br><small class="d-muted">ends at period end</small>
+              <% } %>
+            </td>
+            <td>
+              <small class="d-muted">
+                <% if (row.status === "past_due" && row.next_attempt_at) { %>
+                  retry <%= formatDate(row.next_attempt_at, { withTime: false }) %>
+                  <br>attempt <%= row.attempt_count %>
+                <% } else if (row.current_period_end) { %>
+                  <%= formatDate(row.current_period_end, { withTime: false }) %>
+                <% } %>
+              </small>
+            </td>
+            <td class="d-right"><%= fmt(row.amount_cents, row.currency) %></td>
+            <td class="d-right">
+              <% if (row.status !== "canceled") { %>
+                <% if (row.cancel_at_period_end) { %>
+                  <form method="post" action="/dashboard/subscriptions/<%= row.public_id %>/resume">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <button class="d-btn d-btn--small" type="submit">Keep it</button>
+                  </form>
+                <% } else { %>
+                  <form method="post" action="/dashboard/subscriptions/<%= row.public_id %>/cancel"
+                        data-d-confirm="Cancel at the end of the period they paid for?">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <input type="hidden" name="when" value="period_end">
+                    <button class="d-btn d-btn--small" type="submit">Cancel</button>
+                  </form>
+                <% } %>
+              <% } %>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+    <p class="d-hint">
+      Cancelling ends it when the period they already paid for runs out. They keep
+      access until then, which is what they paid for.
+    </p>
+  <% } %>
+</section>
+
+<%- include("partials/close") %>

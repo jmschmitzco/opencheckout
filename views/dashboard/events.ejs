@@ -1,0 +1,73 @@
+<%- include("partials/open", { title, lead: "Everything that happened, and what was done about it." }) %>
+
+<div class="d-split">
+  <section class="d-card">
+    <h2 class="d-card__title">Events</h2>
+    <p class="d-hint">
+      Every event is kept, in the same shape the webhook carries. An integration
+      that missed one can replay from here instead of reconciling against your orders.
+    </p>
+    <% if (!events.length) { %>
+      <p class="d-empty">Nothing yet.</p>
+    <% } else { %>
+      <table class="d-table">
+        <thead><tr><th>When</th><th>Type</th><th>Id</th></tr></thead>
+        <tbody>
+          <% events.forEach(function (event) { %>
+            <tr>
+              <td><small class="d-muted"><%= formatDate(event.created_at) %></small></td>
+              <td><code><%= event.type %></code></td>
+              <td><small class="d-mono d-muted"><%= event.id %></small></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </section>
+
+  <section class="d-card">
+    <h2 class="d-card__title">Deliveries</h2>
+    <% if (!deliveries.length) { %>
+      <p class="d-empty">
+        No deliveries yet. Add an endpoint in
+        <a href="/dashboard/settings/webhooks">Webhooks</a>.
+      </p>
+    <% } else { %>
+      <table class="d-table">
+        <thead><tr><th>Event</th><th>Status</th><th>Tries</th><th></th></tr></thead>
+        <tbody>
+          <% deliveries.forEach(function (row) { %>
+            <tr>
+              <td>
+                <code><%= row.event_type %></code>
+                <br><small class="d-muted"><%= row.url %></small>
+                <% if (row.last_error) { %>
+                  <br><small class="d-error"><%= row.last_error %></small>
+                <% } %>
+              </td>
+              <td>
+                <span class="d-pill d-pill--<%= row.status === "delivered" ? "paid" : row.status === "failed" ? "refused" : "pending" %>">
+                  <%= row.status %>
+                </span>
+                <% if (row.last_status_code) { %>
+                  <br><small class="d-muted">HTTP <%= row.last_status_code %></small>
+                <% } %>
+              </td>
+              <td><%= row.attempts %></td>
+              <td class="d-right">
+                <% if (row.status !== "delivered") { %>
+                  <form method="post" action="/dashboard/events/deliveries/<%= row.id %>/retry">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <button class="d-btn d-btn--small" type="submit">Retry</button>
+                  </form>
+                <% } %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </section>
+</div>
+
+<%- include("partials/close") %>

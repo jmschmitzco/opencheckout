@@ -1,0 +1,98 @@
+<%- include("partials/open", { title, lead: "What your backend authenticates with." }) %>
+
+<div class="d-split">
+  <div>
+    <section class="d-card">
+      <% if (!keys.length) { %>
+        <p class="d-empty">No keys yet.</p>
+      <% } else { %>
+        <table class="d-table">
+          <thead><tr><th>Key</th><th>Kind</th><th>Last used</th><th></th></tr></thead>
+          <tbody>
+            <% keys.forEach(function (key) { %>
+              <tr<%= key.active ? "" : ' class="is-archived"' %>>
+                <td>
+                  <span class="d-mono"><%= key.key_prefix %></span>
+                  <br><small class="d-muted"><%= key.label %></small>
+                </td>
+                <td>
+                  <span class="d-chip<%= key.livemode ? " d-chip--on" : " d-chip--test" %>">
+                    <%= key.livemode ? "live" : "test" %>
+                  </span>
+                  <span class="d-chip"><%= key.kind %></span>
+                </td>
+                <td>
+                  <small class="d-muted">
+                    <%= key.last_used_at ? formatDate(key.last_used_at) : "never" %>
+                  </small>
+                </td>
+                <td class="d-right">
+                  <% if (key.active) { %>
+                    <form method="post" action="/dashboard/settings/keys/<%= key.public_id %>/revoke"
+                          data-d-confirm="Revoke this key? Anything using it stops working immediately.">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <button class="d-btn d-btn--small d-btn--quiet" type="submit">Revoke</button>
+                    </form>
+                  <% } else { %>
+                    <small class="d-muted">revoked</small>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </section>
+
+    <section class="d-card d-card--note">
+      <h2 class="d-card__title">Which one to use</h2>
+      <dl class="d-facts">
+        <div><dt class="d-mono">sk_</dt><dd>
+          Secret. Server to server only, and it can do everything. If one ever
+          reaches a browser, revoke it rather than hoping.
+        </dd></div>
+        <div><dt class="d-mono">pk_</dt><dd>
+          Publishable. Safe in a page: it can read a session it already holds the
+          id of, and nothing else. It is the only kind allowed across origins.
+        </dd></div>
+        <div><dt>live and test</dt><dd>
+          A test key never reaches a real processor, and everything it creates is
+          marked <code>livemode: false</code>, so test traffic does not pollute
+          your numbers.
+        </dd></div>
+      </dl>
+      <p class="d-hint">
+        Only the SHA-256 of a key is stored. A leak of this database hands out no
+        usable key, and it is also why we cannot show you one again.
+      </p>
+    </section>
+  </div>
+
+  <div>
+    <section class="d-card">
+      <h2 class="d-card__title">New key</h2>
+      <form class="d-form" method="post" action="/dashboard/settings/keys">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+        <label class="d-label" for="label">What is it for</label>
+        <input class="d-input" id="label" name="label" type="text" placeholder="Production backend">
+
+        <label class="d-label" for="kind">Kind</label>
+        <select class="d-input d-select" id="kind" name="kind">
+          <option value="secret">Secret, for your server</option>
+          <option value="publishable">Publishable, safe in a page</option>
+        </select>
+
+        <label class="d-label" for="mode">Mode</label>
+        <select class="d-input d-select" id="mode" name="mode">
+          <option value="test">Test</option>
+          <option value="live">Live</option>
+        </select>
+
+        <button class="d-btn d-btn--primary d-btn--wide" type="submit">Create key</button>
+      </form>
+    </section>
+  </div>
+</div>
+
+<%- include("partials/close") %>

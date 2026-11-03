@@ -128,7 +128,20 @@ async function main() {
     return { product, price };
   });
 
-  setDemoState({ ...seed, extraProduct: extra.product, extraPrice: extra.price });
+  // Somebody to sign in to the dashboard as. The password is printed below
+  // and the whole database lives in memory, so there is nothing here to leak.
+  const merchantUsers = require("../services/merchant-users");
+  const demoLogin = { email: "you@example.com", password: "demo-password-1234" };
+  await ctx.withMerchant(seed.merchant.id, () =>
+    merchantUsers.create({
+      merchantId: seed.merchant.id,
+      email: demoLogin.email,
+      name: "Northwind owner",
+      plainPassword: demoLogin.password,
+    })
+  );
+
+  setDemoState({ ...seed, extraProduct: extra.product, extraPrice: extra.price, demoLogin });
 
   // Required only now, so the demo routes find the state already in place.
   const app = require("../app");
@@ -142,6 +155,9 @@ async function main() {
     console.log("  Test card   4242 4242 4242 4242   any future date, any CVV");
     console.log("  Declined    4000 0000 0000 0002");
     console.log("  Pix and boleto settle on their own after about 12 seconds.");
+    console.log("");
+    console.log(`  Dashboard   ${config.baseUrl}/dashboard`);
+    console.log(`              ${demoLogin.email} / ${demoLogin.password}`);
     console.log("");
     console.log(`  API key     ${seed.secretKey}`);
     console.log(`  Try it      curl -H "Authorization: Bearer ${seed.secretKey}" ${config.baseUrl}/v1/me`);

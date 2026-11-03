@@ -1,0 +1,98 @@
+<%- include("partials/open", { title, lead: "Your processor accounts. The money lands in them, never here." }) %>
+
+<section class="d-card d-card--note">
+  <p>
+    OpenCheckout never holds anybody's money. Each gateway below is YOUR account,
+    and payments settle straight into it. Credentials are encrypted with
+    <code>APP_SECRET</code> before they are written, and are never shown back.
+  </p>
+</section>
+
+<% gateways.forEach(function (gw) { %>
+  <section class="d-card">
+    <h2 class="d-card__title">
+      <%= gw.name %>
+      <% if (gw.live && gw.live.active) { %><span class="d-chip d-chip--on">live</span><% } %>
+      <% if (gw.test && gw.test.active) { %><span class="d-chip d-chip--test">test</span><% } %>
+    </h2>
+
+    <p class="d-muted">
+      Takes <%= gw.capabilities.methods.join(", ") %>
+      in <%= gw.capabilities.currencies ? gw.capabilities.currencies.join(", ") : "any currency" %>.
+      <% if (!gw.capabilities.supportsRecurring) { %>
+        Cannot charge a saved card again, so no subscriptions and no one click offers.
+      <% } %>
+      <% if (gw.capabilities.usesRedirect) { %>
+        The buyer finishes on their site and comes back.
+      <% } %>
+    </p>
+
+    <% ["live", "test"].forEach(function (mode) { %>
+      <% const saved = gw[mode]; %>
+      <details class="d-details" <%= saved && saved.active ? "" : "" %>>
+        <summary>
+          <%= mode === "live" ? "Live mode" : "Test mode" %>
+          <%= saved && saved.active ? "· connected" : "· not connected" %>
+        </summary>
+
+        <% if (saved) { %>
+          <div class="d-callout">
+            <p><strong>Callback URL.</strong> Set this in the <%= gw.name %> dashboard.</p>
+            <div class="d-copy">
+              <input class="d-input d-mono" type="text" readonly value="<%= saved.webhook_url %>" data-d-copy-value>
+              <button class="d-btn d-btn--ghost" type="button" data-d-copy>Copy</button>
+            </div>
+            <p class="d-hint">
+              The token in that address is what tells us which merchant a
+              notification belongs to, before any signature can be checked. Treat
+              it like a password.
+            </p>
+          </div>
+        <% } %>
+
+        <form class="d-form" method="post" action="/dashboard/settings/gateways">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="hidden" name="gateway" value="<%= gw.name %>">
+          <input type="hidden" name="mode" value="<%= mode %>">
+
+          <% gw.shape.required.forEach(function (field) { %>
+            <label class="d-label" for="<%= gw.name %>-<%= mode %>-<%= field %>"><%= field %></label>
+            <input class="d-input d-mono" id="<%= gw.name %>-<%= mode %>-<%= field %>"
+                   name="<%= field %>" type="password" autocomplete="off"
+                   placeholder="<%= saved ? "saved, type to replace" : "required" %>"
+                   <%= saved ? "" : "required" %>>
+          <% }); %>
+
+          <% (gw.shape.verification || []).forEach(function (field) { %>
+            <label class="d-label" for="<%= gw.name %>-<%= mode %>-<%= field %>"><%= field %></label>
+            <input class="d-input d-mono" id="<%= gw.name %>-<%= mode %>-<%= field %>"
+                   name="<%= field %>" type="password" autocomplete="off"
+                   placeholder="<%= saved ? "saved, type to replace" : "needed to verify notifications" %>">
+          <% }); %>
+
+          <% if (gw.hasSandbox) { %>
+            <label class="d-label" for="<%= gw.name %>-<%= mode %>-env">Environment</label>
+            <select class="d-input d-select" id="<%= gw.name %>-<%= mode %>-env" name="environment">
+              <option value="production" <%= mode === "live" ? "selected" : "" %>>Production</option>
+              <option value="sandbox" <%= mode === "test" ? "selected" : "" %>>Sandbox</option>
+            </select>
+          <% } %>
+
+          <button class="d-btn d-btn--primary" type="submit">Save</button>
+        </form>
+
+        <% if (saved && saved.active) { %>
+          <form method="post" action="/dashboard/settings/gateways/disable"
+                data-d-confirm="Turn <%= gw.name %> <%= mode %> off? Nothing new will be charged through it.">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="gateway" value="<%= gw.name %>">
+            <input type="hidden" name="mode" value="<%= mode %>">
+            <button class="d-btn d-btn--quiet" type="submit">Turn off</button>
+          </form>
+        <% } %>
+      </details>
+    <% }); %>
+  </section>
+<% }); %>
+
+<%- include("partials/close") %>

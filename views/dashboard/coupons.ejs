@@ -1,0 +1,114 @@
+<%- include("partials/open", { title }) %>
+
+<div class="d-split">
+  <div>
+    <section class="d-card">
+      <% if (!rows.length) { %>
+        <p class="d-empty">No coupons yet.</p>
+      <% } else { %>
+        <table class="d-table">
+          <thead><tr><th>Code</th><th>Off</th><th>Used</th><th>Expires</th><th></th></tr></thead>
+          <tbody>
+            <% rows.forEach(function (row) { %>
+              <tr<%= row.active ? "" : ' class="is-archived"' %>>
+                <td>
+                  <strong class="d-mono"><%= row.code %></strong>
+                  <% if (!row.active) { %><span class="d-chip">off</span><% } %>
+                  <% if (row.once_per_email) { %>
+                    <br><small class="d-muted">once per buyer</small>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (row.kind === "percent") { %><%= row.value %>%
+                  <% } else { %><%= fmt(row.value, row.currency) %><% } %>
+                </td>
+                <td>
+                  <%= row.redemptions %><% if (row.max_redemptions) { %> of <%= row.max_redemptions %><% } %>
+                </td>
+                <td>
+                  <small class="d-muted">
+                    <%= row.expires_at ? formatDate(row.expires_at, { withTime: false }) : "never" %>
+                  </small>
+                </td>
+                <td class="d-right">
+                  <% if (row.active) { %>
+                    <form method="post" action="/dashboard/coupons/<%= encodeURIComponent(row.code) %>/archive"
+                          data-d-confirm="Turn this code off?">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <button class="d-btn d-btn--small d-btn--quiet" type="submit">Turn off</button>
+                    </form>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+        <p class="d-hint">
+          A redemption is counted when an ORDER is created, not when somebody
+          types the code. Trying three codes does not burn three of a limited one.
+        </p>
+      <% } %>
+    </section>
+  </div>
+
+  <div>
+    <section class="d-card">
+      <h2 class="d-card__title">New coupon</h2>
+      <form class="d-form" method="post" action="/dashboard/coupons">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+        <label class="d-label" for="code">Code</label>
+        <input class="d-input d-mono" id="code" name="code" type="text" required
+               placeholder="LAUNCH20" autocapitalize="characters">
+
+        <div class="d-row">
+          <div>
+            <label class="d-label" for="kind">Takes off</label>
+            <select class="d-input d-select" id="kind" name="kind" data-d-coupon-kind>
+              <option value="percent">A percentage</option>
+              <option value="amount">A fixed amount</option>
+            </select>
+          </div>
+          <div>
+            <label class="d-label" for="value">How much</label>
+            <input class="d-input" id="value" name="value" type="text" required placeholder="20">
+          </div>
+        </div>
+
+        <div data-d-coupon-currency hidden>
+          <label class="d-label" for="currency">Currency</label>
+          <select class="d-input d-select" id="currency" name="currency">
+            <% currencies.forEach(function (code) { %>
+              <option value="<%= code %>" <%= code === "BRL" ? "selected" : "" %>><%= code %></option>
+            <% }); %>
+          </select>
+          <p class="d-hint">
+            A fixed amount only applies to carts in its own currency. Converting it
+            silently would turn 50 off into a different 50.
+          </p>
+        </div>
+
+        <div class="d-row">
+          <div>
+            <label class="d-label" for="max_redemptions">Limit</label>
+            <input class="d-input" id="max_redemptions" name="max_redemptions" type="number"
+                   min="1" placeholder="no limit">
+          </div>
+          <div>
+            <label class="d-label" for="expires_at">Expires</label>
+            <input class="d-input" id="expires_at" name="expires_at" type="date">
+          </div>
+        </div>
+
+        <label class="d-check">
+          <input type="checkbox" name="once_per_email" value="1">
+          <span>Only once per buyer</span>
+        </label>
+
+        <button class="d-btn d-btn--primary d-btn--wide" type="submit">Create coupon</button>
+      </form>
+    </section>
+  </div>
+</div>
+
+<%- include("partials/close") %>

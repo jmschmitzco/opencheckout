@@ -1,0 +1,42 @@
+<%- include("partials/head", { title, bare: true }) %>
+
+<main class="d-entry">
+  <form class="d-entry__card d-entry__card--wide" method="post" action="/dashboard/setup">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <h1 class="d-entry__title">Set up OpenCheckout</h1>
+    <p class="d-entry__sub">
+      This page exists once. After the first account is created it is gone, so
+      nobody else can use it to add themselves to your installation.
+    </p>
+
+    <% if (errors.form) { %>
+      <p class="d-flash d-flash--error" role="alert"><%= errors.form %></p>
+    <% } %>
+
+    <label class="d-label" for="business">Your business</label>
+    <input class="d-input" id="business" name="business" type="text" required autofocus
+           value="<%= values.business || "" %>" placeholder="Acme">
+    <p class="d-hint">Buyers see this on the checkout and on their card statement.</p>
+
+    <label class="d-label" for="name">Your name</label>
+    <input class="d-input" id="name" name="name" type="text" value="<%= values.name || "" %>">
+
+    <label class="d-label" for="email">Email</label>
+    <input class="d-input<%= errors.email ? " is-wrong" : "" %>" id="email" name="email"
+           type="email" autocomplete="username" required value="<%= values.email || "" %>">
+    <% if (errors.email) { %><p class="d-error"><%= errors.email %></p><% } %>
+
+    <label class="d-label" for="password">Password</label>
+    <input class="d-input<%= errors.password ? " is-wrong" : "" %>" id="password" name="password"
+           type="password" autocomplete="new-password" required>
+    <p class="d-hint">
+      At least 12 characters. A phrase you can remember beats a short password you cannot.
+    </p>
+    <% if (errors.password) { %><p class="d-error"><%= errors.password %></p><% } %>
+
+    <button class="d-btn d-btn--primary d-btn--wide" type="submit">Create my account</button>
+  </form>
+</main>
+</body>
+</html>

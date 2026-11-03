@@ -225,6 +225,7 @@ trade.
 | Subscriptions | Trials, renewals, dunning with retries, cancel at period end |
 | Entitlements | One call that answers "may this user in?" |
 | Customer portal | Short-lived single-use link, no password to store |
+| Dashboard | Sign in, connect a gateway, theme the checkout, read the sales |
 | Order bump | A tick box in the checkout that joins the same charge |
 | Upsell and downsell | One click after payment, against the saved card |
 | Coupons | Percentage or fixed, limits, once per customer |
@@ -256,6 +257,9 @@ cp .env.example .env     # fill in APP_SECRET, DATABASE_URL, BASE_URL
 npm run db:migrate
 npm start
 ```
+
+Then open `/dashboard`. The setup page creates the first merchant and the
+first owner, and disappears once an account exists.
 
 Then add a merchant's processor credentials, which are encrypted with
 `APP_SECRET` before they are written. Each gateway gets a callback URL with an
@@ -300,7 +304,7 @@ Every one of these is here because the alternative loses money or leaks data.
 npm test
 ```
 
-315 tests against the real schema, in an in-memory PostgreSQL, with a simulated
+348 tests against the real schema, in an in-memory PostgreSQL, with a simulated
 gateway. No network, no credentials, and the exit code is meaningful.
 
 That includes the regression tests from three adversarial audits of this

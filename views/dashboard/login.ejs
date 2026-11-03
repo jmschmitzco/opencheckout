@@ -1,0 +1,27 @@
+<%- include("partials/head", { title, bare: true }) %>
+
+<main class="d-entry">
+  <form class="d-entry__card" method="post" action="/dashboard/login">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="next" value="<%= next %>">
+
+    <h1 class="d-entry__title">Sign in</h1>
+    <p class="d-entry__sub">OpenCheckout</p>
+
+    <% if (error) { %>
+      <p class="d-flash d-flash--error" role="alert"><%= error %></p>
+    <% } %>
+
+    <label class="d-label" for="email">Email</label>
+    <input class="d-input" id="email" name="email" type="email" autocomplete="username"
+           value="<%= values.email || "" %>" required autofocus>
+
+    <label class="d-label" for="password">Password</label>
+    <input class="d-input" id="password" name="password" type="password"
+           autocomplete="current-password" required>
+
+    <button class="d-btn d-btn--primary d-btn--wide" type="submit">Sign in</button>
+  </form>
+</main>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<%- include("partials/open", { title: `Order ${order.public_id}`, lead: formatDate(order.created_at) }) %>
+
+<div class="d-split">
+  <div>
+    <section class="d-card">
+      <h2 class="d-card__title">
+        <span class="d-pill d-pill--<%= order.status %>"><%= order.status %></span>
+        <%= fmt(order.amount_cents) %>
+        <% if (!order.livemode) { %><span class="d-chip d-chip--test">test</span><% } %>
+      </h2>
+
+      <dl class="d-facts">
+        <div><dt>Method</dt><dd>
+          <%= order.payment_method || "-" %>
+          <% if (order.installments > 1) { %> in <%= order.installments %>x<% } %>
+        </dd></div>
+        <% if (order.card_last4) { %>
+          <div><dt>Card</dt><dd><%= order.card_brand || "card" %> ending <%= order.card_last4 %></dd></div>
+        <% } %>
+        <div><dt>Gateway</dt><dd><%= order.gateway || "-" %></dd></div>
+        <% if (order.gateway_charge_id) { %>
+          <div><dt>Charge</dt><dd class="d-mono"><%= order.gateway_charge_id %></dd></div>
+        <% } %>
+        <% if (order.gateway_capture_id) { %>
+          <div><dt>Capture</dt><dd class="d-mono"><%= order.gateway_capture_id %></dd></div>
+        <% } %>
+        <% if (order.coupon_code) { %>
+          <div><dt>Coupon</dt><dd><%= order.coupon_code %>, &minus;<%= fmt(order.discount_cents) %></dd></div>
+        <% } %>
+        <% if (order.paid_at) { %>
+          <div><dt>Paid</dt><dd><%= formatDate(order.paid_at) %></dd></div>
+        <% } %>
+        <% if (order.refusal_reason) { %>
+          <div><dt>Reason</dt><dd><%= order.refusal_reason %></dd></div>
+        <% } %>
+        <% if (order.external_reference) { %>
+          <div><dt>Your reference</dt><dd class="d-mono"><%= order.external_reference %></dd></div>
+        <% } %>
+      </dl>
+
+      <%#
+        The button for "the buyer swears they paid". It asks the gateway,
+        server to server, which is one of only two things in this system
+        allowed to mark a sale paid.
+      %>
+      <% if (["pending", "refused", "expired"].indexOf(order.status) >= 0 && order.gateway_charge_id) { %>
+        <form method="post" action="/dashboard/orders/<%= order.public_id %>/reconcile">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="d-btn" type="submit">Ask the gateway again</button>
+        </form>
+        <p class="d-hint">
+          Reads the current state straight from <%= order.gateway || "the gateway" %>. Use it when a
+          buyer says they paid and this still says otherwise.
+        </p>
+      <% } %>
+    </section>
+
+    <section class="d-card">
+      <h2 class="d-card__title">What was bought</h2>
+      <table class="d-table">
+        <tbody>
+          <% items.forEach(function (item) { %>
+            <tr>
+              <td>
+                <%= item.description %>
+                <% if (item.kind !== "main") { %><span class="d-chip"><%= item.kind %></span><% } %>
+                <% if (item.quantity > 1) { %>
+                  <br><small class="d-muted"><%= item.quantity %> &times; <%= fmt(item.unit_amount_cents) %></small>
+                <% } %>
+              </td>
+              <td class="d-right"><%= fmt(item.amount_cents) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </section>
+
+    <% if (charges.length) { %>
+      <section class="d-card">
+        <h2 class="d-card__title">Every attempt</h2>
+        <p class="d-hint">
+          The order carries the current state; this is the history, and it is what
+          reconciliation reads.
+        </p>
+        <table class="d-table">
+          <thead><tr><th>When</th><th>Gateway</th><th>Status</th><th>Detail</th></tr></thead>
+          <tbody>
+            <% charges.forEach(function (charge) { %>
+              <tr>
+                <td><small class="d-muted"><%= formatDate(charge.created_at) %></small></td>
+                <td><%= charge.gateway %></td>
+                <td><span class="d-pill d-pill--<%= charge.status %>"><%= charge.status %></span></td>
+                <td><small class="d-muted"><%= charge.detail || "" %></small></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </section>
+    <% } %>
+  </div>
+
+  <div>
+    <% if (customer) { %>
+      <section class="d-card">
+        <h2 class="d-card__title">Buyer</h2>
+        <dl class="d-facts">
+          <div><dt>Email</dt><dd><%= customer.email %></dd></div>
+          <% if (customer.name) { %><div><dt>Name</dt><dd><%= customer.name %></dd></div><% } %>
+          <% if (customer.phone) { %><div><dt>Phone</dt><dd><%= customer.phone %></dd></div><% } %>
+          <% if (customer.external_id) { %>
+            <div><dt>Your user id</dt><dd class="d-mono"><%= customer.external_id %></dd></div>
+          <% } %>
+        </dl>
+      </section>
+    <% } %>
+
+    <% if (parent) { %>
+      <section class="d-card">
+        <h2 class="d-card__title">Came from</h2>
+        <p>
+          <a class="d-mono" href="/dashboard/orders/<%= parent.public_id %>"><%= parent.public_id %></a>
+          <br><small class="d-muted">This is a <%= order.kind %> on that order.</small>
+        </p>
+      </section>
+    <% } %>
+
+    <% if (children.length) { %>
+      <section class="d-card">
+        <h2 class="d-card__title">Funnel</h2>
+        <table class="d-table">
+          <tbody>
+            <% children.forEach(function (child) { %>
+              <tr>
+                <td>
+                  <a class="d-mono" href="/dashboard/orders/<%= child.public_id %>"><%= child.kind %></a>
+                  <br><span class="d-pill d-pill--<%= child.status %>"><%= child.status %></span>
+                </td>
+                <td class="d-right"><%= fmt(child.amount_cents, child.currency) %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+        <p class="d-hint">A canceled row with no amount is an offer the buyer declined.</p>
+      </section>
+    <% } %>
+  </div>
+</div>
+
+<%- include("partials/close") %>

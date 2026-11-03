@@ -1,0 +1,126 @@
+<%- include("partials/open", { title, lead: "A second thing offered to somebody who is already buying." }) %>
+
+<div class="d-split">
+  <div>
+    <section class="d-card">
+      <h2 class="d-card__title">How the three differ</h2>
+      <dl class="d-facts">
+        <div><dt>Bump</dt><dd>
+          A tick box inside the checkout, before paying. It joins the same charge,
+          so there is one authorization and one receipt. A coupon on the cart does
+          NOT discount it.
+        </dd></div>
+        <div><dt>Upsell</dt><dd>
+          Offered after the payment succeeded, charged in one click against the
+          card the first sale saved.
+        </dd></div>
+        <div><dt>Downsell</dt><dd>
+          Offered instead, to somebody who declined the upsell.
+        </dd></div>
+      </dl>
+      <p class="d-hint">
+        The one click pair only appears where the gateway can charge a saved card
+        again. Mercado Pago tokens are single use and PayPal wants approval every
+        time, so with those the funnel does not show at all. A Pix order has no
+        saved card either.
+      </p>
+    </section>
+
+    <% if (!rows.length) { %>
+      <section class="d-card"><p class="d-empty">No offers yet.</p></section>
+    <% } else { %>
+      <section class="d-card">
+        <table class="d-table">
+          <thead><tr><th>Offer</th><th>When</th><th>Sells</th><th class="d-right">Price</th><th></th></tr></thead>
+          <tbody>
+            <% rows.forEach(function (row) { %>
+              <tr<%= row.active ? "" : ' class="is-archived"' %>>
+                <td>
+                  <strong><%= row.title %></strong>
+                  <% if (!row.active) { %><span class="d-chip">archived</span><% } %>
+                  <% if (row.description) { %>
+                    <br><small class="d-muted"><%= row.description %></small>
+                  <% } %>
+                </td>
+                <td><span class="d-chip"><%= row.kind %></span></td>
+                <td><%= row.product_name %></td>
+                <td class="d-right">
+                  <%= fmt(row.unit_amount_cents, row.currency) %>
+                  <% if (row.compare_at_cents) { %>
+                    <br><small class="d-muted"><s><%= fmt(row.compare_at_cents, row.currency) %></s></small>
+                  <% } %>
+                </td>
+                <td class="d-right">
+                  <% if (row.active) { %>
+                    <form method="post" action="/dashboard/offers/<%= row.public_id %>/archive"
+                          data-d-confirm="Stop showing this offer?">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <button class="d-btn d-btn--small d-btn--quiet" type="submit">Archive</button>
+                    </form>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </section>
+    <% } %>
+  </div>
+
+  <div>
+    <section class="d-card">
+      <h2 class="d-card__title">New offer</h2>
+      <% if (!products.length || !prices.length) { %>
+        <p class="d-empty">
+          You need a product with a one time price first.
+          <a href="/dashboard/products">Add one</a>.
+        </p>
+      <% } else { %>
+        <form class="d-form" method="post" action="/dashboard/offers">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+          <label class="d-label" for="kind">Kind</label>
+          <select class="d-input d-select" id="kind" name="kind">
+            <% kinds.forEach(function (kind) { %>
+              <option value="<%= kind %>"><%= kind %></option>
+            <% }); %>
+          </select>
+
+          <label class="d-label" for="trigger_product">Shown to people buying</label>
+          <select class="d-input d-select" id="trigger_product" name="trigger_product" required>
+            <% products.forEach(function (product) { %>
+              <option value="<%= product.public_id %>"><%= product.name %></option>
+            <% }); %>
+          </select>
+
+          <label class="d-label" for="price">What it sells</label>
+          <select class="d-input d-select" id="price" name="price" required>
+            <% prices.forEach(function (price) { %>
+              <option value="<%= price.public_id %>">
+                <%= price.product_name %> &middot; <%= fmt(price.unit_amount_cents, price.currency) %>
+              </option>
+            <% }); %>
+          </select>
+          <p class="d-hint">
+            One time prices only. A one click button that starts a subscription,
+            with no second confirmation, is a chargeback waiting to be written.
+          </p>
+
+          <label class="d-label" for="offer_title">Headline</label>
+          <input class="d-input" id="offer_title" name="title" type="text" required
+                 placeholder="Add the templates pack">
+
+          <label class="d-label" for="offer_description">One line more</label>
+          <textarea class="d-input" id="offer_description" name="description" rows="2"></textarea>
+
+          <label class="d-label" for="offer_image">Image URL</label>
+          <input class="d-input" id="offer_image" name="image_url" type="url" placeholder="https://">
+
+          <button class="d-btn d-btn--primary d-btn--wide" type="submit">Create offer</button>
+        </form>
+      <% } %>
+    </section>
+  </div>
+</div>
+
+<%- include("partials/close") %>

@@ -1,0 +1,67 @@
+<%- include("partials/open", { title, lead: `${total} orders` }) %>
+
+<form class="d-filters" method="get" action="/dashboard/orders">
+  <input class="d-input" type="search" name="q" value="<%= search || "" %>"
+         placeholder="Email or order id" aria-label="Search">
+  <select class="d-input d-select" name="status" aria-label="Status">
+    <option value="">Any status</option>
+    <% statuses.forEach(function (one) { %>
+      <option value="<%= one %>" <%= status === one ? "selected" : "" %>><%= one %></option>
+    <% }); %>
+  </select>
+  <button class="d-btn" type="submit">Filter</button>
+  <% if (search || status) { %><a class="d-link" href="/dashboard/orders">Clear</a><% } %>
+</form>
+
+<section class="d-card">
+  <% if (!rows.length) { %>
+    <p class="d-empty">No orders match that.</p>
+  <% } else { %>
+    <table class="d-table">
+      <thead>
+        <tr>
+          <th>Order</th><th>Buyer</th><th>Method</th><th>When</th>
+          <th>Status</th><th class="d-right">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% rows.forEach(function (row) { %>
+          <tr>
+            <td>
+              <a class="d-mono" href="/dashboard/orders/<%= row.public_id %>"><%= row.public_id %></a>
+              <% if (row.kind !== "main") { %><span class="d-chip"><%= row.kind %></span><% } %>
+              <% if (!row.livemode) { %><span class="d-chip d-chip--test">test</span><% } %>
+            </td>
+            <td>
+              <%= row.email || "-" %>
+              <% if (row.name) { %><br><small class="d-muted"><%= row.name %></small><% } %>
+            </td>
+            <td>
+              <%= row.payment_method || "-" %>
+              <% if (row.card_last4) { %>
+                <br><small class="d-muted"><%= row.card_brand || "card" %> ...<%= row.card_last4 %></small>
+              <% } %>
+              <% if (row.installments > 1) { %>
+                <br><small class="d-muted"><%= row.installments %>x</small>
+              <% } %>
+            </td>
+            <td><small class="d-muted"><%= formatDate(row.created_at) %></small></td>
+            <td><span class="d-pill d-pill--<%= row.status %>"><%= row.status %></span></td>
+            <td class="d-right"><%= fmt(row.amount_cents, row.currency) %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } %>
+</section>
+
+<% if (pages > 1) { %>
+  <nav class="d-pager">
+    <% const link = (n) => `/dashboard/orders?page=${n}${status ? "&status=" + status : ""}${search ? "&q=" + encodeURIComponent(search) : ""}`; %>
+    <% if (page > 1) { %><a class="d-btn" href="<%= link(page - 1) %>">Previous</a><% } %>
+    <span class="d-muted">Page <%= page %> of <%= pages %></span>
+    <% if (page < pages) { %><a class="d-btn" href="<%= link(page + 1) %>">Next</a><% } %>
+  </nav>
+<% } %>
+
+<%- include("partials/close") %>

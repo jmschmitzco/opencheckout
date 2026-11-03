@@ -1,0 +1,55 @@
+<%
+  const groups = [
+    { label: "Sell", items: [
+      ["/dashboard", "Overview"],
+      ["/dashboard/orders", "Orders"],
+      ["/dashboard/subscriptions", "Subscriptions"],
+      ["/dashboard/customers", "Customers"],
+    ]},
+    { label: "Catalogue", items: [
+      ["/dashboard/products", "Products"],
+      ["/dashboard/offers", "Offers"],
+      ["/dashboard/coupons", "Coupons"],
+    ]},
+    { label: "Set up", items: [
+      ["/dashboard/settings/gateways", "Gateways"],
+      ["/dashboard/settings/branding", "Branding"],
+      ["/dashboard/settings/keys", "API keys"],
+      ["/dashboard/settings/webhooks", "Webhooks"],
+      ["/dashboard/events", "Events"],
+      ["/dashboard/settings/account", "Account"],
+    ]},
+  ];
+  // "/dashboard" must not light up on every page, so the root is matched
+  // exactly and everything else by prefix.
+  const active = (href) => href === "/dashboard" ? path === "/dashboard" : path.indexOf(href) === 0;
+%>
+<aside class="d-side">
+  <a class="d-brand" href="/dashboard">
+    <span class="d-brand__mark" aria-hidden="true"></span>
+    <span class="d-brand__text">
+      <strong><%= merchant.name %></strong>
+      <small>OpenCheckout</small>
+    </span>
+  </a>
+
+  <nav class="d-nav">
+    <% groups.forEach(function (group) { %>
+      <p class="d-nav__label"><%= group.label %></p>
+      <% group.items.forEach(function (item) { %>
+        <a class="d-nav__item<%= active(item[0]) ? " is-on" : "" %>" href="<%= item[0] %>"><%= item[1] %></a>
+      <% }); %>
+    <% }); %>
+  </nav>
+
+  <div class="d-side__foot">
+    <% if (demo) { %>
+      <p class="d-demo">Demo mode. Simulated gateway, in-memory database.</p>
+    <% } %>
+    <p class="d-whoami"><%= user.name || user.email %></p>
+    <form method="post" action="/dashboard/logout">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <button class="d-link" type="submit">Sign out</button>
+    </form>
+  </div>
+</aside>

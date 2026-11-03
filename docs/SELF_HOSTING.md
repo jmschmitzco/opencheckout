@@ -110,35 +110,57 @@ missing, which is better than starting with a default nobody meant.
 
 ## Creating the first merchant
 
-There is no signup page: this is infrastructure, and who may create a merchant
-is your decision, not ours. Create one from a Node shell:
+Open `/dashboard` and the setup page will be waiting. It creates the first
+merchant and the first owner, and then it is **gone**: once any account exists
+it answers 404, so nobody can use it to add themselves to your installation.
+
+It also creates a test key and a live key, so the first thing you do after
+setting up is not "go and find where keys are made".
+
+Then fill in **your own domains** under Account. That one list decides two
+things, because both answer "is this address yours?":
+
+- which sites may frame the embedded widget
+- which hosts a `success_url` may point at
+
+The second is what stops a stolen API key redirecting your paying customers
+somewhere else, so it is worth doing before you go live. A domain covers its
+subdomains.
+
+<details>
+<summary>Doing it from a shell instead</summary>
+
+If you would rather not expose the setup page at all, create the account
+yourself and it will never appear:
 
 ```js
 const ctx = require("./src/db/merchant-context");
 const merchants = require("./src/services/merchants");
-const apiKeys = require("./src/services/api-keys");
+const merchantUsers = require("./src/services/merchant-users");
 
 const merchant = await ctx.withoutMerchant("bootstrapping the first merchant", () =>
   merchants.create({ name: "Your Company", statementName: "YOURCO" })
 );
 
-await ctx.withMerchant(merchant.id, async () => {
-  await merchants.update(merchant.id, { allowedOrigins: ["yourcompany.com"] });
-  const live = await apiKeys.create(merchant.id, { label: "Production", livemode: true });
-  const test = await apiKeys.create(merchant.id, { label: "Test", livemode: false });
-  console.log(live.key, test.key); // shown once, never again
-});
+await ctx.withMerchant(merchant.id, () =>
+  merchantUsers.create({
+    merchantId: merchant.id,
+    email: "you@yourcompany.com",
+    plainPassword: "a long passphrase you will remember",
+  })
+);
 ```
 
-`allowedOrigins` is your own domains. It decides two things: which sites may
-frame the embedded widget, and which hosts a `success_url` may point at. The
-second is what stops a stolen API key from redirecting paying customers
-somewhere else, so fill it in before you go live.
+</details>
 
 ## Gateway credentials
 
-Credentials are encrypted with `APP_SECRET` before they are stored, and only a
-mask is ever shown back.
+Add them under **Settings, Gateways** in the dashboard. Credentials are
+encrypted with `APP_SECRET` before they are stored and are never shown back,
+and the page gives you the callback URL to paste into the processor's own
+dashboard.
+
+Doing it from a shell instead:
 
 ```js
 const gatewayConfig = require("./src/services/gateway-config");

@@ -1,0 +1,203 @@
+<%- include("partials/open", { title, lead: "What the buyer sees. The preview on the right is a real checkout." }) %>
+
+<section class="d-card">
+  <h2 class="d-card__title">Start from one of these</h2>
+  <div class="d-presets">
+    <% Object.keys(presets).forEach(function (id) { %>
+      <form method="post" action="/dashboard/settings/branding">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="preset" value="<%= id %>">
+        <button class="d-preset" type="submit">
+          <span class="d-preset__swatch"
+                style="background: <%= presets[id].tokens.accent %>"></span>
+          <%= presets[id].name %>
+        </button>
+      </form>
+    <% }); %>
+  </div>
+  <p class="d-hint">Picking one replaces what is below. Everything stays editable.</p>
+</section>
+
+<div class="d-split d-split--sticky">
+  <div>
+    <form class="d-form" method="post" action="/dashboard/settings/branding">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+      <section class="d-card">
+        <h2 class="d-card__title">Your mark</h2>
+
+        <label class="d-label" for="brand_name">Name on the checkout</label>
+        <input class="d-input" id="brand_name" name="brand_name" type="text"
+               maxlength="<%= limits.brand_name %>" value="<%= theme.brand_name || "" %>"
+               placeholder="<%= merchant.name %>">
+
+        <label class="d-label" for="logo_url">Logo URL</label>
+        <input class="d-input" id="logo_url" name="logo_url" type="url"
+               value="<%= theme.logo_url || "" %>" placeholder="https://">
+        <p class="d-hint">Shown instead of the name. Transparent PNG or SVG works best.</p>
+
+        <div class="d-row">
+          <div>
+            <label class="d-label" for="logo_height">Logo height</label>
+            <input class="d-input" id="logo_height" name="logo_height" type="number"
+                   min="12" max="80" value="<%= theme.logo_height %>">
+          </div>
+          <div>
+            <label class="d-label" for="favicon_url">Favicon URL</label>
+            <input class="d-input" id="favicon_url" name="favicon_url" type="url"
+                   value="<%= theme.favicon_url || "" %>" placeholder="https://">
+          </div>
+        </div>
+      </section>
+
+      <section class="d-card">
+        <h2 class="d-card__title">Colours</h2>
+        <div class="d-colours">
+          <% [
+            ["accent", "Buttons and highlights"],
+            ["page_bg", "Page background"],
+            ["surface", "Cards"],
+            ["text", "Text"],
+            ["text_muted", "Quiet text"],
+            ["border", "Lines"],
+            ["success", "Confirmations"],
+            ["danger", "Errors"],
+          ].forEach(function (pair) { %>
+            <label class="d-colour">
+              <input type="color" name="<%= pair[0] %>" value="<%= theme[pair[0]] %>">
+              <span><%= pair[1] %></span>
+            </label>
+          <% }); %>
+        </div>
+        <p class="d-hint">
+          The text on your button is picked for contrast, not taken literally: a
+          yellow button never gets white text, because nobody could read it.
+        </p>
+
+        <label class="d-label" for="color_scheme">Light or dark</label>
+        <select class="d-input d-select" id="color_scheme" name="color_scheme">
+          <% schemes.forEach(function (scheme) { %>
+            <option value="<%= scheme %>" <%= theme.color_scheme === scheme ? "selected" : "" %>>
+              <%= scheme === "auto" ? "Follow the visitor's system" : scheme %>
+            </option>
+          <% }); %>
+        </select>
+      </section>
+
+      <section class="d-card">
+        <h2 class="d-card__title">Shape and type</h2>
+        <div class="d-row">
+          <div>
+            <label class="d-label" for="font">Font</label>
+            <select class="d-input d-select" id="font" name="font">
+              <% fonts.forEach(function (font) { %>
+                <option value="<%= font %>" <%= theme.font === font ? "selected" : "" %>><%= font %></option>
+              <% }); %>
+            </select>
+            <p class="d-hint">system, serif and mono load nothing extra.</p>
+          </div>
+          <div>
+            <label class="d-label" for="template">Layout</label>
+            <select class="d-input d-select" id="template" name="template">
+              <% templates.forEach(function (one) { %>
+                <option value="<%= one %>" <%= theme.template === one ? "selected" : "" %>><%= one %></option>
+              <% }); %>
+            </select>
+          </div>
+        </div>
+
+        <div class="d-row">
+          <div>
+            <label class="d-label" for="radius_card">Card corners</label>
+            <input class="d-input" id="radius_card" name="radius_card" type="range"
+                   min="0" max="32" value="<%= theme.radius_card %>">
+          </div>
+          <div>
+            <label class="d-label" for="radius_button">Button corners</label>
+            <input class="d-input" id="radius_button" name="radius_button" type="range"
+                   min="0" max="32" value="<%= theme.radius_button %>">
+          </div>
+        </div>
+      </section>
+
+      <section class="d-card">
+        <h2 class="d-card__title">Words</h2>
+
+        <label class="d-label" for="headline">Headline</label>
+        <input class="d-input" id="headline" name="headline" type="text"
+               maxlength="<%= limits.headline %>" value="<%= theme.headline || "" %>"
+               placeholder="Finalize sua compra">
+
+        <label class="d-label" for="subheadline">Under it</label>
+        <input class="d-input" id="subheadline" name="subheadline" type="text"
+               maxlength="<%= limits.subheadline %>" value="<%= theme.subheadline || "" %>">
+
+        <label class="d-label" for="submit_label">Button</label>
+        <input class="d-input" id="submit_label" name="submit_label" type="text"
+               maxlength="<%= limits.submit_label %>" value="<%= theme.submit_label || "" %>"
+               placeholder="Pagar agora">
+
+        <label class="d-label" for="top_bar_text">Bar across the top</label>
+        <input class="d-input" id="top_bar_text" name="top_bar_text" type="text"
+               maxlength="<%= limits.top_bar_text %>" value="<%= theme.top_bar_text || "" %>">
+
+        <label class="d-label" for="support_text">Support line</label>
+        <input class="d-input" id="support_text" name="support_text" type="text"
+               maxlength="<%= limits.support_text %>" value="<%= theme.support_text || "" %>">
+      </section>
+
+      <section class="d-card">
+        <h2 class="d-card__title">Show or hide</h2>
+        <% [
+          ["show_order_summary", "The order summary"],
+          ["show_coupon", "The coupon field"],
+          ["show_installments", "Instalment choice"],
+          ["show_secure_badge", "The secure payment line"],
+          ["powered_by", "Powered by OpenCheckout"],
+        ].forEach(function (pair) { %>
+          <label class="d-check">
+            <input type="checkbox" name="<%= pair[0] %>" value="1" <%= theme[pair[0]] ? "checked" : "" %>>
+            <span><%= pair[1] %></span>
+          </label>
+        <% }); %>
+        <p class="d-hint">
+          The attribution is on by default and the licence lets you turn it off.
+          It defaults on so the project gets credit from installs that do not mind.
+        </p>
+      </section>
+
+      <% if (allowCustomCss) { %>
+        <section class="d-card">
+          <h2 class="d-card__title">Custom CSS</h2>
+          <p class="d-hint">
+            On because this installation declared itself single tenant. On a shared
+            one this is off: CSS from one merchant is a way to draw a convincing
+            fake form over a real one.
+          </p>
+          <textarea class="d-input d-mono" name="custom_css" rows="6"><%= theme.custom_css || "" %></textarea>
+        </section>
+      <% } %>
+
+      <button class="d-btn d-btn--primary d-btn--wide" type="submit">Save</button>
+    </form>
+  </div>
+
+  <div>
+    <section class="d-card d-card--preview">
+      <h2 class="d-card__title">Preview</h2>
+      <p class="d-hint">
+        A real checkout, in test mode, with your theme on it. It cannot take money.
+      </p>
+      <div class="d-preview">
+        <iframe class="d-preview__frame" src="<%= previewUrl %>" title="Checkout preview"></iframe>
+      </div>
+      <p class="d-hint">
+        Save to see a change here. The three layers are merchant, then product,
+        then the <code>branding</code> you can pass when you create a session,
+        which is how you dress it as your own customer's brand.
+      </p>
+    </section>
+  </div>
+</div>
+
+<%- include("partials/close") %>

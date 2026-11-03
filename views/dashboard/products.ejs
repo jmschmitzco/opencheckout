@@ -1,0 +1,99 @@
+<%- include("partials/open", { title, lead: "A product is the thing. A price is how much, in which currency, once or recurring." }) %>
+
+<div class="d-split">
+  <div>
+    <% if (!products.length) { %>
+      <section class="d-card"><p class="d-empty">
+        Nothing yet. Add one on the right, or skip the catalogue entirely and
+        create sessions with ad hoc line items from your own code.
+      </p></section>
+    <% } %>
+
+    <% products.forEach(function (product) { %>
+      <section class="d-card<%= product.active ? "" : " is-archived" %>">
+        <h2 class="d-card__title">
+          <%= product.name %>
+          <% if (!product.active) { %><span class="d-chip">archived</span><% } %>
+        </h2>
+        <% if (product.description) { %><p class="d-muted"><%= product.description %></p><% } %>
+        <p><small class="d-mono d-muted"><%= product.public_id %></small></p>
+
+        <table class="d-table">
+          <tbody>
+            <% product.prices.forEach(function (price) { %>
+              <tr<%= price.active ? "" : ' class="is-archived"' %>>
+                <td>
+                  <strong><%= fmt(price.unit_amount_cents, price.currency) %></strong>
+                  <% if (price.type === "recurring") { %>
+                    / <%= price.interval_count > 1 ? price.interval_count + " " : "" %><%= price.interval %>
+                    <% if (price.trial_days) { %>
+                      <br><small class="d-muted"><%= price.trial_days %> day trial</small>
+                    <% } %>
+                  <% } else if (price.max_installments > 1) { %>
+                    <br><small class="d-muted">up to <%= price.max_installments %>x</small>
+                  <% } %>
+                  <% if (!price.active) { %><span class="d-chip">archived</span><% } %>
+                  <br><small class="d-mono d-muted"><%= price.public_id %></small>
+                </td>
+                <td class="d-right">
+                  <% if (price.active) { %>
+                    <form method="post" action="/dashboard/prices/<%= price.public_id %>/link">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <button class="d-btn d-btn--small" type="submit">Test link</button>
+                    </form>
+                    <form method="post" action="/dashboard/prices/<%= price.public_id %>/archive"
+                          data-d-confirm="Stop offering this price? Existing orders keep it.">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <button class="d-btn d-btn--small d-btn--quiet" type="submit">Archive</button>
+                    </form>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+
+        <% if (product.active) { %>
+          <details class="d-details">
+            <summary>Add another price</summary>
+            <form class="d-form" method="post" action="/dashboard/products/<%= product.public_id %>/prices">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <%- include("partials/price-fields", { currencies, prefix: product.public_id }) %>
+              <button class="d-btn d-btn--primary" type="submit">Add price</button>
+            </form>
+          </details>
+        <% } %>
+      </section>
+    <% }); %>
+  </div>
+
+  <div>
+    <section class="d-card">
+      <h2 class="d-card__title">New product</h2>
+      <form class="d-form" method="post" action="/dashboard/products">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+        <label class="d-label" for="name">Name</label>
+        <input class="d-input" id="name" name="name" type="text" required>
+
+        <label class="d-label" for="description">Description</label>
+        <textarea class="d-input" id="description" name="description" rows="2"></textarea>
+
+        <label class="d-label" for="image_url">Image URL</label>
+        <input class="d-input" id="image_url" name="image_url" type="url" placeholder="https://">
+
+        <p class="d-hint">
+          The first price is created with it. A product with no price cannot be
+          sold, and splitting them across two screens is how catalogues fill up
+          with things nobody can buy.
+        </p>
+
+        <%- include("partials/price-fields", { currencies, prefix: "new" }) %>
+
+        <button class="d-btn d-btn--primary d-btn--wide" type="submit">Create</button>
+      </form>
+    </section>
+  </div>
+</div>
+
+<%- include("partials/close") %>

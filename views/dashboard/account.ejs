@@ -1,0 +1,103 @@
+<%- include("partials/open", { title }) %>
+
+<div class="d-split">
+  <div>
+    <section class="d-card">
+      <h2 class="d-card__title">Your business</h2>
+      <form class="d-form" method="post" action="/dashboard/settings/account">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+        <label class="d-label" for="name">Name</label>
+        <input class="d-input" id="name" name="name" type="text" required value="<%= merchant.name %>">
+
+        <label class="d-label" for="statement_name">On the card statement</label>
+        <input class="d-input d-mono" id="statement_name" name="statement_name" type="text"
+               maxlength="22" value="<%= merchant.statement_name || "" %>">
+        <p class="d-hint">
+          Up to 22 characters, uppercase. Buyers dispute what they do not
+          recognise, so this is a revenue field, not a cosmetic one.
+        </p>
+
+        <div class="d-row">
+          <div>
+            <label class="d-label" for="support_email">Support email</label>
+            <input class="d-input" id="support_email" name="support_email" type="email"
+                   value="<%= merchant.support_email || "" %>">
+          </div>
+          <div>
+            <label class="d-label" for="support_url">Support page</label>
+            <input class="d-input" id="support_url" name="support_url" type="url"
+                   value="<%= merchant.support_url || "" %>" placeholder="https://">
+          </div>
+        </div>
+
+        <label class="d-label" for="allowed_origins">Your own domains</label>
+        <input class="d-input d-mono" id="allowed_origins" name="allowed_origins" type="text"
+               value="<%= merchant.allowed_origins || "" %>" placeholder="yourapp.com, app.yourapp.com">
+        <p class="d-hint">
+          One list, two jobs, because both answer "is this address yours?":
+          which sites may frame the embedded widget, and which hosts a
+          <code>success_url</code> may point at. The second is what stops a
+          stolen API key redirecting your paying customers somewhere else.
+          A domain covers its subdomains.
+        </p>
+        <% if (!merchant.allowed_origins) { %>
+          <p class="d-error">
+            Empty means not restricted yet: any https address is accepted, and the
+            embedded widget will not load at all. Worth filling in before you go live.
+          </p>
+        <% } %>
+
+        <button class="d-btn d-btn--primary" type="submit">Save</button>
+      </form>
+    </section>
+
+    <section class="d-card">
+      <h2 class="d-card__title">Your password</h2>
+      <form class="d-form" method="post" action="/dashboard/settings/account/password">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+        <label class="d-label" for="current_password">Current password</label>
+        <input class="d-input" id="current_password" name="current_password" type="password"
+               autocomplete="current-password" required>
+
+        <label class="d-label" for="password">New password</label>
+        <input class="d-input" id="password" name="password" type="password"
+               autocomplete="new-password" required>
+        <p class="d-hint">At least 12 characters.</p>
+
+        <button class="d-btn d-btn--primary" type="submit">Change it</button>
+      </form>
+    </section>
+  </div>
+
+  <div>
+    <section class="d-card">
+      <h2 class="d-card__title">People</h2>
+      <table class="d-table">
+        <tbody>
+          <% people.forEach(function (person) { %>
+            <tr>
+              <td>
+                <%= person.name || person.email %>
+                <br><small class="d-muted"><%= person.email %></small>
+              </td>
+              <td class="d-right">
+                <span class="d-chip"><%= person.role %></span>
+                <br><small class="d-muted">
+                  <%= person.last_login_at ? formatDate(person.last_login_at) : "never signed in" %>
+                </small>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+      <p class="d-hint">
+        Adding a second person is on the roadmap. Until then, one account per
+        installation, and five wrong passwords locks it for fifteen minutes.
+      </p>
+    </section>
+  </div>
+</div>
+
+<%- include("partials/close") %>

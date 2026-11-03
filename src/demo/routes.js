@@ -163,6 +163,8 @@ function index() {
       <span>The same page again, themed from the API.</span></a>
     <a class="card" href="/demo/embed"><strong>Embedded widget</strong>
       <span>The checkout in an overlay on somebody else's page.</span></a>
+    <a class="card" href="/dashboard"><strong>The merchant dashboard</strong>
+      <span>Sign in as ${state.demoLogin.email} with ${state.demoLogin.password}</span></a>
     <h2>From your terminal</h2>
     <pre><code>curl -H "Authorization: Bearer ${state.secretKey}" \\
   ${config.baseUrl}/v1/me</code></pre>

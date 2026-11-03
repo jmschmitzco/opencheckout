@@ -1,0 +1,40 @@
+<%- include("partials/open", { title, lead: `${rows.length} shown` }) %>
+
+<form class="d-filters" method="get" action="/dashboard/customers">
+  <input class="d-input" type="search" name="q" value="<%= search || "" %>"
+         placeholder="Email, name, or your own user id" aria-label="Search">
+  <button class="d-btn" type="submit">Search</button>
+  <% if (search) { %><a class="d-link" href="/dashboard/customers">Clear</a><% } %>
+</form>
+
+<section class="d-card">
+  <% if (!rows.length) { %>
+    <p class="d-empty">Nobody yet.</p>
+  <% } else { %>
+    <table class="d-table">
+      <thead>
+        <tr><th>Email</th><th>Name</th><th>Your user id</th><th>Since</th><th class="d-right">Paid orders</th></tr>
+      </thead>
+      <tbody>
+        <% rows.forEach(function (row) { %>
+          <tr>
+            <td>
+              <a href="/dashboard/orders?q=<%= encodeURIComponent(row.email) %>"><%= row.email %></a>
+            </td>
+            <td><%= row.name || "-" %></td>
+            <td class="d-mono"><%= row.external_id || "-" %></td>
+            <td><small class="d-muted"><%= formatDate(row.created_at, { withTime: false }) %></small></td>
+            <td class="d-right"><%= row.paid_orders %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+    <p class="d-hint">
+      "Your user id" is the <code>external_id</code> you send when you create a
+      session. It is what makes <code>GET /v1/entitlements?external_id=...</code>
+      answer without you keeping a mapping of your own.
+    </p>
+  <% } %>
+</section>
+
+<%- include("partials/close") %>
